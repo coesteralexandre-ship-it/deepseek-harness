@@ -7,7 +7,10 @@ function read(name: string): string | undefined {
 
 export interface ElevenLabsEnv {
   apiKey?: string
+  /** Agent that prospects agencies. */
   agentId?: string
+  /** Agent that reminds the client's customers about invoices. */
+  relanceAgentId?: string
   phoneNumberId?: string
   webhookSecret?: string
 }
@@ -16,6 +19,7 @@ export function elevenLabsEnv(): ElevenLabsEnv {
   return {
     apiKey: read('ELEVENLABS_API_KEY'),
     agentId: read('ELEVENLABS_AGENT_ID'),
+    relanceAgentId: read('ELEVENLABS_RELANCE_AGENT_ID'),
     phoneNumberId: read('ELEVENLABS_PHONE_NUMBER_ID'),
     webhookSecret: read('ELEVENLABS_WEBHOOK_SECRET'),
   }
@@ -42,5 +46,17 @@ export function callerName(): string {
 }
 
 export function appUrl(): string {
-  return read('NEXT_PUBLIC_APP_URL') ?? (read('VERCEL_URL') !== undefined ? `https://${read('VERCEL_URL')}` : 'http://localhost:3000')
+  // On Vercel the production domain is the public one; the per-deployment URL sits behind Vercel's own login.
+  const vercelHost = read('VERCEL_PROJECT_PRODUCTION_URL') ?? read('VERCEL_URL')
+  return read('NEXT_PUBLIC_APP_URL') ?? (vercelHost !== undefined ? `https://${vercelHost}` : 'http://localhost:3000')
+}
+
+/** Shared access code of the internal pages; unset leaves them open (local development). */
+export function accessCode(): string | undefined {
+  return read('APP_ACCESS_CODE')
+}
+
+/** Whether anyone holding a public link may trigger an outbound phone call to a number they type. Off unless `PUBLIC_CALLBACK=1`. */
+export function publicCallbackEnabled(): boolean {
+  return read('PUBLIC_CALLBACK') === '1'
 }

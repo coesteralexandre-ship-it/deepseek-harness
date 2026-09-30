@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { applyCallsAction, callsAction } from '@/core/calls'
-import { jsonError, parseBody } from '@/core/http'
+import { errorResponse, jsonError, parseBody } from '@/core/http'
 import { getStore } from '@/core/store'
 
 export const dynamic = 'force-dynamic'
@@ -15,6 +15,10 @@ export async function POST(request: Request, { params }: Context) {
   const store = getStore()
   const prospect = await store.findProspectByToken(token)
   if (prospect === undefined) return jsonError('Lien inconnu', 404)
-  const result = await applyCallsAction(store, prospect, parsed.data)
-  return NextResponse.json({ ok: true, callId: result.call?.id })
+  try {
+    const result = await applyCallsAction(store, prospect, parsed.data)
+    return NextResponse.json({ ok: true, callId: result.call?.id, pending: result.pending === true })
+  } catch (error) {
+    return errorResponse(error)
+  }
 }

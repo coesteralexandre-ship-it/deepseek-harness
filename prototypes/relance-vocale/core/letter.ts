@@ -12,13 +12,18 @@ export interface OutreachInput {
   date?: Date
 }
 
+/** Signal title without the quotation marks it may already carry. */
+function bare(title: string): string {
+  return title.replace(/^[«"“\s]+|[»"”\s]+$/gu, '')
+}
+
 /**
  * Opening sentence of the letter, keyed by the strongest signal's source. It
  * names the fact; the prospect's angle, printed right after, carries the pitch.
  */
 const LETTER_HOOKS: Record<SignalSource, (signal: Signal) => string> = {
-  linkedin: signal => `Votre post « ${signal.title} » m’a arrêtée : vous y décrivez ce que vivent la plupart des agences, des paies avancées chaque vendredi et des clients qui règlent quand ils veulent.`,
-  offre_emploi: signal => `Vous recrutez « ${signal.title} » : le signe que la relance déborde.`,
+  linkedin: signal => `Votre post « ${bare(signal.title)} » m’a arrêtée : vous y décrivez ce que vivent la plupart des agences, des paies avancées chaque vendredi et des clients qui règlent quand ils veulent.`,
+  offre_emploi: signal => `Vous recrutez « ${bare(signal.title)} » : le signe que la relance déborde.`,
   pappers: signal => `Vos derniers comptes publiés racontent une histoire que vous connaissez : ${signal.title.charAt(0).toLowerCase()}${signal.title.slice(1)}.`,
   bodacc: signal => `${signal.title}. Quand un donneur d’ordres vacille, ce sont les autres factures qu’il faut sécuriser vite, sans braquer personne.`,
   presse: signal => `${signal.title} : bravo. La croissance a un revers discret, plus de paies avancées avant d’être encaissées.`,
@@ -61,8 +66,8 @@ export function buildLetter({ prospect, signals, callerName, landingUrl, date = 
     `Le ${formatLetterDate(date)}`,
     'Objet : deux minutes pour entendre ce que vos clients entendraient',
     `Bonjour ${firstName},`,
-    hook,
-    prospect.angle,
+    // An angle that already opens on the same fact replaces the hook instead of repeating it.
+    ...(hook.slice(0, 10).toLowerCase() === prospect.angle.slice(0, 10).toLowerCase() ? [prospect.angle] : [hook, prospect.angle]),
     `Je m’appelle ${AGENT_NAME}. Je suis l’agent vocal d’${PRODUCT_NAME}, et je suis une intelligence artificielle : je relance par téléphone les factures échues des agences d’intérim, à J+3, J+10 et J+20, avec un ton qui préserve la relation, et je passe la main à un humain dès qu’un litige apparaît.`,
     `Plutôt qu’une plaquette, je vous propose de m’entendre. Scannez le code ci-contre, ou ouvrez ${landingUrl} : je vous rappelle, ou nous parlons directement depuis votre navigateur. Deux minutes, sans engagement.`,
     `Si cela vaut la peine d’aller plus loin, ${callerName} vous montrera l’agent sur vos propres factures, en vingt minutes.`,

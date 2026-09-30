@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
 import { elevenLabsEnv } from './env.ts'
 import { parseOutcome, type CallResult } from './outcome.ts'
+import { parseAmount, parseRelanceOutcome, type RelanceResult } from './receivables.ts'
 import type { TranscriptTurn } from './types.ts'
 
 const API = 'https://api.elevenlabs.io'
@@ -36,6 +37,47 @@ const signedUrlResponse = z.object({ signed_url: z.string() })
 export async function getSignedUrl(agentId: string): Promise<string> {
   const json = await request(`/v1/convai/conversation/get-signed-url?agent_id=${encodeURIComponent(agentId)}`, { method: 'GET' }, signedUrlResponse)
   return json.signed_url
+}
+
+const conversationResponse = z.object({
+  status: z.string(),
+  conversation_id: z.string().optional(),
+  transcript: z.array(z.object({ role: z.string(), message: z.string().nullish() })).optional(),
+  analysis: z.object({
+    transcript_summary: z.string().optional(),
+    data_collection_results: z.record(z.string(), z.object({ value: z.unknown().optional() })).optional(),
+    evaluation_criteria_results: z.record(z.string(), z.object({ result: z.string().optional() })).optional(),
+  }).nullish(),
+})
+
+export interface ConversationAnalysis {
+  /** False while ElevenLabs is still processing the conversation. */
+  done: boolean
+  summary?: string
+  /** Data-collection values by field id, empty values dropped. */
+  collected: Record<string, string>
+  /** Evaluation criteria that succeeded. */
+  passed: string[]
+  transcript: TranscriptTurn[]
+}
+
+/** Analysis of a finished conversation, read back without waiting for the post-call webhook. */
+export async function getConversationAnalysis(conversationId: string): Promise<ConversationAnalysis> {
+  const json = await request(`/v1/convai/conversations/${encodeURIComponent(conversationId)}`, { method: 'GET' }, conversationResponse)
+  const collected: Record<string, string> = {}
+  for (const [id, field] of Object.entries(json.analysis?.data_collection_results ?? {})) {
+    const value = typeof field.value === 'number' ? String(field.value) : asText(field.value)
+    if (value !== undefined) collected[id] = value
+  }
+  return {
+    done: json.status === 'done' || json.status === 'failed',
+    summary: json.analysis?.transcript_summary,
+    collected,
+    passed: Object.entries(json.analysis?.evaluation_criteria_results ?? {}).filter(([, criterion]) => criterion.result === 'success').map(([id]) => id),
+    transcript: (json.transcript ?? [])
+      .filter(turn => typeof turn.message === 'string' && turn.message.trim() !== '')
+      .map(turn => ({ role: turn.role === 'agent' ? 'agent' : 'user', text: turn.message as string })),
+  }
 }
 
 export interface OutboundCallRequest {
@@ -128,6 +170,31 @@ function asText(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
 }
 
+/** Invoice id a reminder call was started with, when the dynamic variables carried one. */
+export function invoiceIdOf(payload: PostCallPayload): string | undefined {
+  const value = payload.data.conversation_initiation_client_data?.dynamic_variables?.invoice_id
+  return typeof value === 'string' ? value : undefined
+}
+
+/** Translate the webhook analysis of a reminder call into an invoice update. */
+export function relanceResultFromPayload(payload: PostCallPayload): RelanceResult {
+  const analysis = payload.data.analysis ?? undefined
+  const fields = analysis?.data_collection_results ?? {}
+  const transcript: TranscriptTurn[] = (payload.data.transcript ?? [])
+    .filter(turn => typeof turn.message === 'string' && turn.message.trim() !== '')
+    .map(turn => ({ role: turn.role === 'agent' ? 'agent' : 'user', text: turn.message as string }))
+  return {
+    conversationId: payload.data.conversation_id,
+    outcome: parseRelanceOutcome(fields.relance_outcome?.value),
+    summary: asText(fields.resume?.value) ?? analysis?.transcript_summary,
+    promiseDate: asText(fields.promise_date?.value),
+    promiseAmountEur: parseAmount(fields.promise_amount?.value),
+    disputeReason: asText(fields.dispute_reason?.value),
+    rightContact: asText(fields.right_contact?.value),
+    transcript: transcript.length > 0 ? transcript : undefined,
+  }
+}
+
 /** Prospect id the call was started with, when the dynamic variables carried one. */
 export function prospectIdOf(payload: PostCallPayload): string | undefined {
   const value = payload.data.conversation_initiation_client_data?.dynamic_variables?.prospect_id
@@ -147,7 +214,7 @@ export function callResultFromPayload(payload: PostCallPayload): CallResult {
   return {
     conversationId: payload.data.conversation_id,
     outcome,
-    summary: analysis?.transcript_summary,
+    summary: asText(collectedFields.resume?.value) ?? analysis?.transcript_summary,
     meetingSlot: asText(collectedFields.meeting_slot?.value),
     callbackAt: asText(collectedFields.callback_time?.value),
     transcript: transcript.length > 0 ? transcript : undefined,

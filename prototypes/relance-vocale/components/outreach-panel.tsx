@@ -30,9 +30,9 @@ async function postJson(url: string, body: unknown): Promise<{ ok: boolean; data
 
 function Row({ title, hint, children }: { title: string; hint: string; children: React.ReactNode }) {
   return (
-    <section className="rule pt-4">
-      <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">{title}</p>
-      <p className="mt-1 text-[13px] leading-relaxed text-ink-2">{hint}</p>
+    <section className="border-t border-line pt-4">
+      <p className="label text-blue">{title}</p>
+      <p className="mt-1 text-[13px] leading-relaxed text-muted">{hint}</p>
       <div className="mt-3">{children}</div>
     </section>
   )
@@ -99,36 +99,37 @@ export function OutreachPanel({ prospectId, firstName, email, phone, landingUrl,
   }
 
   return (
-    <div className="card mt-6 p-5">
-      <h2 className="font-display text-2xl">Outreach</h2>
-      <p className="mt-1 text-[13px] leading-relaxed text-ink-2">La lettre, la note vocale et le lien public partagent le même QR code : chaque ouverture devient un signal.</p>
+    <div className="card p-5">
+      <p className="label">Courrier, note vocale, lien</p>
+      <h2 className="font-display mt-1.5 text-[22px] leading-tight">Faire entendre {AGENT_NAME}</h2>
+      <p className="mt-1.5 text-[13px] leading-relaxed text-muted">La lettre, la note vocale et le lien public mènent à la même page : chaque ouverture devient un signal.</p>
 
-      <div className="mt-5 space-y-6">
+      <div className="mt-5 space-y-5">
         <Row title="Lien public (QR code)" hint={`Page où ${firstName} parle à ${AGENT_NAME} ou se fait rappeler.`}>
-          <p className="break-all font-mono text-[12px]">{landingUrl}</p>
+          <p className="break-all font-mono text-[11.5px] text-blue">{landingUrl}</p>
           <div className="mt-2 flex flex-wrap gap-2">
             <CopyButton text={landingUrl} label="Copier le lien" />
-            <a href={landingUrl} target="_blank" rel="noreferrer" className="btn">Ouvrir ↗</a>
+            <a href={landingUrl} target="_blank" rel="noreferrer" className="btn btn-sm">Ouvrir ↗</a>
           </div>
         </Row>
 
         <Row title="Lettre" hint="Une page, un QR code, un modèle réécrit à partir du signal le plus fort.">
-          <Link href={letterUrl.replace(/^https?:\/\/[^/]+/, '')} className="btn btn-solid">Ouvrir le letter builder</Link>
+          <Link href={letterUrl.replace(/^https?:\/\/[^/]+/, '')} className="btn btn-primary">Ouvrir le letter builder</Link>
         </Row>
 
         <Row title="Note vocale" hint={`Script lu par la voix de ${AGENT_NAME} (ElevenLabs). MP3 pour l’email et lemlist, OGG pour WhatsApp.`}>
-          <textarea className="field min-h-[120px] resize-y border border-line p-2 text-[12px] leading-relaxed" value={script} onChange={event => setScript(event.target.value)} />
+          <textarea id={`voice-script-${prospectId}`} className="field min-h-[120px] resize-y text-[12.5px] leading-relaxed" value={script} onChange={event => setScript(event.target.value)} />
           <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" className="btn" disabled={busy !== null || !capabilities.tts} onClick={() => generate('mp3')}>{busy === 'audio-mp3' ? 'Synthèse…' : 'Générer le MP3'}</button>
-            <button type="button" className="btn" disabled={busy !== null || !capabilities.tts} onClick={() => generate('ogg')}>{busy === 'audio-ogg' ? 'Synthèse…' : 'Générer l’OGG (WhatsApp)'}</button>
+            <button type="button" className="btn btn-sm" disabled={busy !== null || !capabilities.tts} onClick={() => generate('mp3')}>{busy === 'audio-mp3' ? 'Synthèse…' : 'Générer le MP3'}</button>
+            <button type="button" className="btn btn-sm" disabled={busy !== null || !capabilities.tts} onClick={() => generate('ogg')}>{busy === 'audio-ogg' ? 'Synthèse…' : 'Générer l’OGG (WhatsApp)'}</button>
           </div>
-          {!capabilities.tts && <p className="mt-2 font-mono text-[11px] text-amber">Renseignez ELEVENLABS_API_KEY et ELEVENLABS_VOICE_ID.</p>}
+          {!capabilities.tts && <p className="mt-2 font-mono text-[11px] leading-relaxed text-ochre">Renseignez ELEVENLABS_API_KEY et ELEVENLABS_VOICE_ID.</p>}
           {ready.mp3 && (
             <div className="mt-3">
               <audio key={playerKey} className="w-full" controls preload="none" src={`/api/prospects/${prospectId}/audio?format=mp3`} />
               <div className="mt-2 flex flex-wrap gap-2">
-                <a className="btn" href={`/api/prospects/${prospectId}/audio?format=mp3`} download>Télécharger le MP3</a>
-                {ready.ogg && <a className="btn" href={`/api/prospects/${prospectId}/audio?format=ogg`} download>Télécharger l’OGG</a>}
+                <a className="btn btn-sm" href={`/api/prospects/${prospectId}/audio?format=mp3`} download>Télécharger le MP3</a>
+                {ready.ogg && <a className="btn btn-sm" href={`/api/prospects/${prospectId}/audio?format=ogg`} download>Télécharger l’OGG</a>}
                 <CopyButton text={publicAudioUrl.mp3} label="Copier l’URL publique" />
               </div>
             </div>
@@ -138,29 +139,29 @@ export function OutreachPanel({ prospectId, firstName, email, phone, landingUrl,
         <Row title="lemlist" hint="Ajoute le contact à la campagne avec {{landingUrl}}, {{audioUrl}}, {{angle}} et {{signal}} en variables.">
           <div className="flex flex-wrap items-end gap-3">
             <label className="min-w-[200px] flex-1">
-              <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">Email</span>
-              <input className="field mt-1" value={leadEmail} onChange={event => setLeadEmail(event.target.value)} placeholder="prenom@entreprise.fr" />
+              <span className="label">Email</span>
+              <input id={`lead-email-${prospectId}`} className="field mt-1.5" value={leadEmail} onChange={event => setLeadEmail(event.target.value)} placeholder="prenom@entreprise.fr" />
             </label>
-            <button type="button" className="btn" disabled={busy !== null || !capabilities.lemlist || leadEmail === ''} onClick={exportLemlist}>{busy === 'lemlist' ? 'Export…' : 'Ajouter à la campagne'}</button>
+            <button type="button" className="btn btn-sm" disabled={busy !== null || !capabilities.lemlist || leadEmail === ''} onClick={exportLemlist}>{busy === 'lemlist' ? 'Export…' : 'Ajouter à la campagne'}</button>
           </div>
-          {!capabilities.lemlist && <p className="mt-2 font-mono text-[11px] text-amber">Renseignez LEMLIST_API_KEY et LEMLIST_CAMPAIGN_ID.</p>}
+          {!capabilities.lemlist && <p className="mt-2 font-mono text-[11px] leading-relaxed text-ochre">Renseignez LEMLIST_API_KEY et LEMLIST_CAMPAIGN_ID.</p>}
         </Row>
 
         <Row title="WhatsApp" hint="Le lien ouvre la conversation avec le texte prérempli ; joignez l’OGG à la main, ou envoyez-le par l’API Cloud dans une fenêtre de 24 h.">
           <div className="flex flex-wrap items-end gap-3">
             <label className="min-w-[180px] flex-1">
-              <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">Numéro</span>
-              <input className="field tabular mt-1 font-mono" value={waNumber} onChange={event => setWaNumber(event.target.value)} />
+              <span className="label">Numéro</span>
+              <input id={`wa-number-${prospectId}`} className="field tabular mt-1.5 font-mono text-[13px]" value={waNumber} onChange={event => setWaNumber(event.target.value)} />
             </label>
-            <button type="button" className="btn" disabled={busy !== null} onClick={() => whatsapp(false)}>{busy === 'wa-link' ? '…' : 'Ouvrir WhatsApp'}</button>
-            <button type="button" className="btn" disabled={busy !== null || !capabilities.whatsapp || !capabilities.tts} onClick={() => whatsapp(true)}>{busy === 'wa-send' ? 'Envoi…' : 'Envoyer par l’API'}</button>
+            <button type="button" className="btn btn-sm" disabled={busy !== null} onClick={() => whatsapp(false)}>{busy === 'wa-link' ? '…' : 'Ouvrir WhatsApp'}</button>
+            <button type="button" className="btn btn-sm" disabled={busy !== null || !capabilities.whatsapp || !capabilities.tts} onClick={() => whatsapp(true)}>{busy === 'wa-send' ? 'Envoi…' : 'Envoyer par l’API'}</button>
           </div>
-          {waLink !== null && <p className="mt-2 break-all font-mono text-[11px] text-ink-2">{waLink}</p>}
-          {!capabilities.whatsapp && <p className="mt-2 font-mono text-[11px] text-amber">API Cloud : renseignez WHATSAPP_TOKEN et WHATSAPP_PHONE_NUMBER_ID.</p>}
+          {waLink !== null && <p className="mt-2 break-all font-mono text-[11px] text-muted">{waLink}</p>}
+          {!capabilities.whatsapp && <p className="mt-2 font-mono text-[11px] leading-relaxed text-ochre">API Cloud : renseignez WHATSAPP_TOKEN et WHATSAPP_PHONE_NUMBER_ID.</p>}
         </Row>
       </div>
 
-      {notice !== null && <p className="mt-5 border-l-2 border-red pl-3 text-[13px] leading-relaxed text-ink-2">{notice}</p>}
+      {notice !== null && <p className="mt-5 rounded-lg border border-line bg-sunk px-3 py-2 text-[13px] leading-relaxed text-ink-2">{notice}</p>}
     </div>
   )
 }

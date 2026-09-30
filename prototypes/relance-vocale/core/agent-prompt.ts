@@ -31,7 +31,8 @@ Angle d’ouverture à utiliser avec tes mots : {{angle}}
 - Tu ne promets aucun chiffre de recouvrement et aucun prix : {{caller_name}} le fera en rendez-vous.
 - Tu n’insistes jamais plus d’une fois. Une objection ferme met fin à l’appel poliment.
 - Tu ne relances aucune facture réelle pendant cet appel : tu vends la démo.
-- À la fin, résume l’issue en une phrase : rendez-vous pris (avec le créneau), rappel demandé (avec le créneau) ou pas d’intérêt.`
+- Tu te présentes une seule fois, dans ta première phrase.
+- Tu ne prononces jamais de résumé ni de note interne : l’analyse de l’appel s’en charge après coup.`
 
 export interface CollectedField {
   id: string
@@ -45,6 +46,7 @@ export const DATA_COLLECTION: CollectedField[] = [
   { id: 'meeting_slot', type: 'string', description: 'Jour et heure du rendez-vous accepté, en toutes lettres (ex : « jeudi 14 h 30 »). Vide sinon.' },
   { id: 'callback_time', type: 'string', description: 'Jour et heure auxquels la personne veut être rappelée. Vide sinon.' },
   { id: 'unpaid_context', type: 'string', description: 'Ce que la personne a dit de ses impayés : volume, qui relance, outils, objections.' },
+  { id: 'resume', type: 'string', description: 'Résumé de l’appel en français, en deux phrases au plus : ce qui a été dit et ce qui a été convenu.' },
 ]
 
 /** Evaluation criterion to declare on the agent (Analysis → Evaluation). */

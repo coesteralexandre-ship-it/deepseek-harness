@@ -25,8 +25,8 @@ export function StageSelect({ prospectId, stage }: { prospectId: string; stage: 
 
   return (
     <label className="block">
-      <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">Étape</span>
-      <select className="field mt-1 font-mono text-[12px] uppercase tracking-[0.08em]" value={stage} disabled={pending} onChange={event => change(event.target.value as Stage)}>
+      <span className="label">Étape du pipeline</span>
+      <select className="field mt-1.5" value={stage} disabled={pending} onChange={event => change(event.target.value as Stage)}>
         {STAGES.map(option => (
           <option key={option} value={option}>{STAGE_META[option].label}</option>
         ))}

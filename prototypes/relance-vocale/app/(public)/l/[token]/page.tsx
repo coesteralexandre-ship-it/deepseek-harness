@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { PublicCall } from '@/components/public-call'
 import { AGENT_NAME, PRODUCT_NAME, dynamicVariablesFor } from '@/core/agent-prompt'
-import { callerName, elevenLabsEnv } from '@/core/env'
+import { callerName, elevenLabsEnv, publicCallbackEnabled } from '@/core/env'
 import { LANDING_VISIT_TITLE, recordLandingSignal } from '@/core/landing'
 import { getStore } from '@/core/store'
 import { ttsConfigured } from '@/core/tts'
@@ -19,18 +19,17 @@ export default async function LandingPage({ params }: { params: Promise<{ token:
   const own = signals.filter(signal => signal.prospectId === prospect.id)
   const env = elevenLabsEnv()
   const browserReady = env.apiKey !== undefined && env.agentId !== undefined
-  const phoneReady = browserReady && env.phoneNumberId !== undefined
+  const phoneReady = browserReady && env.phoneNumberId !== undefined && publicCallbackEnabled()
   const audioReady = (await store.getAudio(prospect.id, 'mp3')) !== undefined || ttsConfigured()
 
   return (
     <div className="py-10">
       <div className="animate-rise max-w-2xl">
-        <h1 className="font-display text-[40px] leading-[0.98] tracking-tight sm:text-[52px]">
-          Bonjour {prospect.contact.firstName},
-          <br />
-          <em className="text-red">deux minutes</em> pour entendre ce que vos clients entendraient.
+        <p className="eyebrow">Pour {prospect.contact.firstName} {prospect.contact.lastName} · {prospect.company}</p>
+        <h1 className="font-display mt-4 text-[36px] leading-[1.04] sm:text-[50px]">
+          Deux minutes pour entendre ce que <span className="accent">vos clients entendraient.</span>
         </h1>
-        <p className="mt-5 text-[15px] leading-relaxed text-ink-2">
+        <p className="mt-5 text-[15.5px] leading-relaxed text-muted">
           {AGENT_NAME} est l’agent vocal d’{PRODUCT_NAME}. C’est une intelligence artificielle : elle relance les factures échues des agences d’intérim, poliment, et passe la main à un humain dès qu’un litige apparaît. Ici, c’est vous qu’elle appelle.
         </p>
       </div>
@@ -46,7 +45,7 @@ export default async function LandingPage({ params }: { params: Promise<{ token:
         audioUrl={audioReady ? `/api/l/${token}/audio?format=mp3` : null}
       />
 
-      <p className="mt-12 max-w-2xl text-[12px] leading-relaxed text-muted">
+      <p className="mt-12 max-w-2xl text-[12px] leading-relaxed text-faint">
         Vous parlez à une intelligence artificielle ; la conversation peut être transcrite pour préparer le rendez-vous. Pour ne plus être contacté, dites « stop » à {AGENT_NAME} ou répondez « stop » au message reçu.
       </p>
     </div>

@@ -1,15 +1,17 @@
 import { NextResponse } from 'next/server'
-import { callResultFromPayload, postCallPayload, prospectIdOf, verifyWebhookSignature } from '@/core/elevenlabs'
+import { callResultFromPayload, invoiceIdOf, postCallPayload, prospectIdOf, relanceResultFromPayload, verifyWebhookSignature } from '@/core/elevenlabs'
 import { elevenLabsEnv } from '@/core/env'
 import { jsonError } from '@/core/http'
 import { applyCallResult } from '@/core/outcome'
+import { applyRelanceResult } from '@/core/receivables'
 import { getStore } from '@/core/store'
+import { workspaceNow } from '@/core/workspace'
 
 export const dynamic = 'force-dynamic'
 
 /**
  * ElevenLabs post-call webhook. Closes the matching call record and moves the
- * prospect to the stage the agent's analysis implies.
+ * prospect, or the invoice of a reminder call, to the state the agent's analysis implies.
  */
 export async function POST(request: Request) {
   const rawBody = await request.text()
@@ -32,6 +34,14 @@ export async function POST(request: Request) {
 
   const store = getStore()
   const conversationId = payload.data.conversation_id
+  const invoiceId = invoiceIdOf(payload)
+  if (invoiceId !== undefined) {
+    const invoice = await store.getInvoice(invoiceId)
+    if (invoice === undefined) return NextResponse.json({ ignored: 'facture inconnue', conversationId })
+    const closed = applyRelanceResult(invoice, relanceResultFromPayload(payload), await workspaceNow(store))
+    await store.saveInvoice(closed)
+    return NextResponse.json({ ok: true, invoiceId: closed.id, status: closed.status, verified: webhookSecret !== undefined })
+  }
   const prospectId = prospectIdOf(payload)
   const prospect = prospectId !== undefined
     ? await store.getProspect(prospectId)

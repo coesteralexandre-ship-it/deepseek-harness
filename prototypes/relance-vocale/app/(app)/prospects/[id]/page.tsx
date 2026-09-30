@@ -1,12 +1,12 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { CallPanel } from '@/components/call-panel'
 import { OutreachPanel } from '@/components/outreach-panel'
+import { Pill } from '@/components/pill'
 import { SourceChip, WeightDots } from '@/components/source-chip'
 import { StageSelect } from '@/components/stage-select'
-import { Stamp } from '@/components/stamp'
 import { Transcript } from '@/components/transcript'
-import { dynamicVariablesFor } from '@/core/agent-prompt'
+import { VoiceConsole } from '@/components/voice-console'
+import { AGENT_NAME, dynamicVariablesFor } from '@/core/agent-prompt'
 import { elevenLabsEnv } from '@/core/env'
 import { formatDateTime, formatKeur, formatPhone, relativeDay } from '@/core/format'
 import { outreachCapabilities, outreachUrls, voiceScriptFor } from '@/core/outreach'
@@ -18,10 +18,10 @@ import { toView } from '@/core/views'
 export const dynamic = 'force-dynamic'
 
 const OUTCOME_LABEL: Record<CallOutcome, { label: string; tone: Tone }> = {
-  rdv: { label: 'RDV pris', tone: 'green' },
-  rappel: { label: 'À rappeler', tone: 'amber' },
-  refus: { label: 'Refus', tone: 'muted' },
-  inconnu: { label: 'À qualifier', tone: 'amber' },
+  rdv: { label: 'RDV pris', tone: 'ok' },
+  rappel: { label: 'À rappeler', tone: 'warn' },
+  refus: { label: 'Refus', tone: 'mute' },
+  inconnu: { label: 'À qualifier', tone: 'warn' },
 }
 
 const MODE_LABEL = { navigateur: 'navigateur', telephone: 'téléphone', simulation: 'simulation' } as const
@@ -41,82 +41,79 @@ export default async function ProspectPage({ params }: { params: Promise<{ id: s
   const [mp3, ogg] = await Promise.all([store.getAudio(prospect.id, 'mp3'), store.getAudio(prospect.id, 'ogg')])
 
   return (
-    <div className="grid gap-12 py-10 lg:grid-cols-[1.1fr_0.9fr]">
-      <div className="animate-rise">
-        <Link href="/" className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted hover:text-ink">← Pipeline</Link>
-        <div className="mt-4 flex flex-wrap items-center gap-4">
-          <h1 className="font-display text-[40px] leading-[0.95] tracking-tight sm:text-[52px]">{view.company}</h1>
-          <Stamp tone={stage.tone} animate>{stage.label}</Stamp>
+    <div className="grid gap-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
+      <div className="animate-rise min-w-0">
+        <Link href="/pipeline" className="font-mono text-[11px] uppercase tracking-[0.16em] text-faint hover:text-ink">← Pipeline</Link>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <h1 className="font-display text-[34px] leading-[1.02] sm:text-[44px]">{view.company}</h1>
+          <Pill tone={stage.tone}>{stage.label}</Pill>
         </div>
         <p className="mt-2 text-[14px] text-muted">{view.city} · {view.headcount}</p>
 
-        <dl className="mt-8 grid gap-x-8 gap-y-4 sm:grid-cols-3">
-          <div className="rule pt-3">
-            <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">Contact</dt>
-            <dd className="mt-1 text-[14px]">
-              {view.contact.firstName} {view.contact.lastName}
-              <br />
-              <span className="text-ink-2">{view.contact.role}</span>
-              <br />
-              <span className="tabular font-mono text-[12px] text-ink-2">{formatPhone(view.contact.phone)}</span>
-            </dd>
+        <dl className="mt-7 grid gap-3 sm:grid-cols-3">
+          <div className="card p-4">
+            <dt className="label">Contact</dt>
+            <dd className="mt-2 text-[14.5px] font-semibold text-ink">{view.contact.firstName} {view.contact.lastName}</dd>
+            <dd className="text-[13px] text-muted">{view.contact.role}</dd>
+            <dd className="tabular mt-1 font-mono text-[12px] text-muted">{formatPhone(view.contact.phone)}</dd>
           </div>
-          <div className="rule pt-3">
-            <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">Score</dt>
-            <dd className="font-display tabular mt-1 text-[34px] leading-none">{view.score}<span className="text-[16px] text-muted">/100</span></dd>
+          <div className="card p-4">
+            <dt className="label">Score</dt>
+            <dd className="font-display tabular mt-2 text-[30px] leading-none">{view.score}<span className="text-[15px] font-medium text-faint">/100</span></dd>
+            <dd className="mt-3 h-1.5 overflow-hidden rounded-full bg-line"><span className="block h-full rounded-full bg-gradient-to-r from-blue to-fuchsia" style={{ width: `${view.score}%` }} /></dd>
           </div>
-          <div className="rule pt-3">
-            <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">Impayés estimés</dt>
-            <dd className="font-display tabular mt-1 text-[34px] leading-none">{view.estimatedUnpaidKeur !== undefined ? formatKeur(view.estimatedUnpaidKeur) : '—'}</dd>
+          <div className="card p-4">
+            <dt className="label">Impayés estimés</dt>
+            <dd className="font-display tabular mt-2 text-[30px] leading-none">{view.estimatedUnpaidKeur !== undefined ? formatKeur(view.estimatedUnpaidKeur) : '—'}</dd>
           </div>
         </dl>
 
-        <section className="mt-10">
-          <h2 className="rule pt-3 font-mono text-[11px] uppercase tracking-[0.16em] text-muted">Angle d’ouverture</h2>
-          <blockquote className="font-display mt-3 border-l-2 border-red pl-4 text-[20px] italic leading-snug">{view.angle}</blockquote>
+        <section className="mt-8">
+          <p className="eyebrow">Angle d’ouverture</p>
+          <blockquote className="mt-3 border-l-[3px] border-blue pl-4 text-[21px] font-semibold leading-snug tracking-[-0.01em] text-ink">{view.angle}</blockquote>
         </section>
 
-        <section className="mt-10">
-          <h2 className="rule pt-3 font-mono text-[11px] uppercase tracking-[0.16em] text-muted">Signaux · {view.signals.length}</h2>
-          <ul className="mt-3 divide-y divide-line">
+        <section className="mt-8">
+          <p className="eyebrow">Signaux · {view.signals.length}</p>
+          <ul className="card mt-3 divide-y divide-line">
             {view.signals.map(signal => (
-              <li key={signal.id} className={`py-3 ${signal.status === 'ignore' ? 'opacity-50' : ''}`}>
+              <li key={signal.id} className={`px-4 py-3.5 ${signal.status === 'ignore' ? 'opacity-50' : ''}`}>
                 <div className="flex flex-wrap items-center gap-3">
                   <SourceChip source={signal.source} />
                   <WeightDots weight={signal.weight} />
-                  <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">{relativeDay(signal.detectedAt)}{signal.status === 'ignore' ? ' · ignoré' : ''}</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">{relativeDay(signal.detectedAt)}{signal.status === 'ignore' ? ' · ignoré' : ''}</span>
                 </div>
-                <p className="mt-1.5 text-[15px] leading-snug">{signal.title}</p>
-                {signal.excerpt !== '' && <p className="mt-1 text-[13px] leading-relaxed text-ink-2">{signal.excerpt}</p>}
+                <p className="mt-2 text-[15px] font-medium leading-snug text-ink">{signal.title}</p>
+                {signal.excerpt !== '' && <p className="mt-1 text-[13px] leading-relaxed text-muted">{signal.excerpt}</p>}
               </li>
             ))}
           </ul>
         </section>
 
-        <section className="mt-10">
-          <h2 className="rule pt-3 font-mono text-[11px] uppercase tracking-[0.16em] text-muted">Appels · {calls.length}</h2>
-          {calls.length === 0 && <p className="mt-3 text-[13px] text-muted">Aucun appel pour l’instant.</p>}
-          <ol className="mt-3 space-y-8">
+        <section className="mt-8">
+          <p className="eyebrow">Appels · {calls.length}</p>
+          {calls.length === 0 && <p className="mt-3 text-[13.5px] text-faint">Aucun appel pour l’instant.</p>}
+          <ol className="mt-3 space-y-3">
             {calls.map(call => (
-              <li key={call.id} className="card p-5">
+              <li key={call.id} className="card p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-3">
                     {call.status === 'en_cours'
-                      ? <Stamp tone="amber">en cours</Stamp>
+                      ? <Pill tone="warn">En cours</Pill>
                       : call.status === 'echec'
-                        ? <Stamp tone="red">échec</Stamp>
-                        : <Stamp tone={OUTCOME_LABEL[call.outcome ?? 'inconnu'].tone}>{OUTCOME_LABEL[call.outcome ?? 'inconnu'].label}</Stamp>}
-                    <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">{MODE_LABEL[call.mode]} · {formatDateTime(call.startedAt)}</span>
+                        ? <Pill tone="hot">Échec</Pill>
+                        : <Pill tone={OUTCOME_LABEL[call.outcome ?? 'inconnu'].tone}>{OUTCOME_LABEL[call.outcome ?? 'inconnu'].label}</Pill>}
+                    <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">{MODE_LABEL[call.mode]} · {formatDateTime(call.startedAt)}</span>
                   </div>
-                  {call.meetingSlot !== undefined && <span className="font-mono text-[11px] text-green">RDV : {call.meetingSlot}</span>}
-                  {call.callbackAt !== undefined && <span className="font-mono text-[11px] text-amber">Rappel : {call.callbackAt}</span>}
+                  {call.meetingSlot !== undefined && <span className="font-mono text-[11px] text-emerald">RDV : {call.meetingSlot}</span>}
+                  {call.callbackAt !== undefined && <span className="font-mono text-[11px] text-ochre">Rappel : {call.callbackAt}</span>}
                 </div>
-                {call.summary !== undefined && <p className="mt-3 text-[14px] leading-relaxed">{call.summary}</p>}
-                {call.error !== undefined && <p className="mt-3 font-mono text-[12px] text-red">{call.error}</p>}
+                {call.summary !== undefined && <p className="mt-3 text-[14px] leading-relaxed text-ink-2">{call.summary}</p>}
+                {call.error !== undefined && <p className="mt-3 font-mono text-[12px] text-fuchsia">{call.error}</p>}
                 {call.transcript !== undefined && call.transcript.length > 0 && (
-                  <details className="mt-4">
-                    <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-[0.16em] text-muted hover:text-ink">Transcription · {call.transcript.length} tours</summary>
-                    <div className="mt-3">
+                  <details className="mt-3">
+                    <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-[0.16em] text-faint hover:text-ink">Transcription · {call.transcript.length} tours</summary>
+                    <div className="mt-3 rounded-lg border border-line bg-sunk p-3">
                       <Transcript turns={call.transcript} userName={view.contact.firstName} />
                     </div>
                   </details>
@@ -127,9 +124,14 @@ export default async function ProspectPage({ params }: { params: Promise<{ id: s
         </section>
       </div>
 
-      <aside className="animate-rise lg:sticky lg:top-6 lg:self-start" style={{ animationDelay: '120ms' }}>
-        <CallPanel
-          prospect={{ id: view.id, company: view.company, firstName: view.contact.firstName, phone: view.contact.phone }}
+      <aside className="animate-rise space-y-4 lg:sticky lg:top-8 lg:self-start" style={{ animationDelay: '120ms' }}>
+        <VoiceConsole
+          kind="prospect"
+          id={view.id}
+          title={`Appeler ${view.contact.firstName}`}
+          roleHint={`Vous jouez ${view.contact.firstName} : ${AGENT_NAME} vous appelle avec les signaux de ${view.company} et tente de prendre rendez-vous.`}
+          userName={view.contact.firstName}
+          phone={view.contact.phone}
           browserReady={browserReady}
           phoneReady={phoneReady}
           dynamicVariables={dynamicVariablesFor(view, view.signals)}
@@ -146,15 +148,15 @@ export default async function ProspectPage({ params }: { params: Promise<{ id: s
           publicAudioUrl={{ mp3: urls.audioUrl('mp3'), ogg: urls.audioUrl('ogg') }}
           capabilities={outreachCapabilities()}
         />
-        <div className="mt-8 space-y-5">
+        <div className="card space-y-4 p-5">
           <StageSelect prospectId={view.id} stage={view.stage} />
           {view.nextCallAt !== undefined && (
-            <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-amber">Prochain appel : {formatDateTime(view.nextCallAt)}</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-ochre">Prochain appel : {formatDateTime(view.nextCallAt)}</p>
           )}
           {view.notes !== undefined && view.notes !== '' && (
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">Notes</p>
-              <p className="mt-1 whitespace-pre-line text-[13px] leading-relaxed text-ink-2">{view.notes}</p>
+              <p className="label">Notes</p>
+              <p className="mt-1.5 whitespace-pre-line text-[13px] leading-relaxed text-muted">{view.notes}</p>
             </div>
           )}
         </div>

@@ -1,9 +1,11 @@
 import { Redis } from '@upstash/redis'
 import { redisEnv, type RedisEnv } from './env.ts'
+import { DEFAULT_SETTINGS } from './clock.ts'
+import { seedInvoices } from './seed-invoices.ts'
 import { seedData } from './seed.ts'
-import type { AudioFormat, Prospect, Signal, StoredAudio } from './types.ts'
+import type { AudioFormat, Invoice, Prospect, Settings, Signal, StoredAudio } from './types.ts'
 
-/** Persistence for prospects, signals and generated audio. Implementations seed themselves on first use. */
+/** Persistence for prospects, signals, invoices and generated audio. Implementations seed themselves on first use. */
 export interface Store {
   readonly kind: 'memoire' | 'redis'
   listProspects(): Promise<Prospect[]>
@@ -16,6 +18,14 @@ export interface Store {
   saveSignal(signal: Signal): Promise<void>
   getAudio(prospectId: string, format: AudioFormat): Promise<StoredAudio | undefined>
   saveAudio(prospectId: string, audio: StoredAudio): Promise<void>
+  listInvoices(): Promise<Invoice[]>
+  getInvoice(id: string): Promise<Invoice | undefined>
+  /** Invoice owning a public answer-page token. */
+  findInvoiceByToken(token: string): Promise<Invoice | undefined>
+  saveInvoice(invoice: Invoice): Promise<void>
+  saveInvoices(invoices: Invoice[]): Promise<void>
+  getSettings(): Promise<Settings>
+  saveSettings(settings: Settings): Promise<void>
   /** Drop everything and reload the seed. */
   reset(): Promise<void>
 }
@@ -28,6 +38,8 @@ class MemoryStore implements Store {
   private prospects = new Map<string, Prospect>()
   private signals = new Map<string, Signal>()
   private audio = new Map<string, StoredAudio>()
+  private invoices = new Map<string, Invoice>()
+  private settings: Settings = DEFAULT_SETTINGS
 
   constructor() {
     void this.reset()
@@ -69,10 +81,40 @@ class MemoryStore implements Store {
     this.audio.set(`${prospectId}:${audio.format}`, audio)
   }
 
+  async listInvoices(): Promise<Invoice[]> {
+    return [...this.invoices.values()]
+  }
+
+  async getInvoice(id: string): Promise<Invoice | undefined> {
+    return this.invoices.get(id)
+  }
+
+  async findInvoiceByToken(token: string): Promise<Invoice | undefined> {
+    return [...this.invoices.values()].find(invoice => invoice.token === token)
+  }
+
+  async saveInvoice(invoice: Invoice): Promise<void> {
+    this.invoices.set(invoice.id, invoice)
+  }
+
+  async saveInvoices(invoices: Invoice[]): Promise<void> {
+    for (const invoice of invoices) this.invoices.set(invoice.id, invoice)
+  }
+
+  async getSettings(): Promise<Settings> {
+    return this.settings
+  }
+
+  async saveSettings(settings: Settings): Promise<void> {
+    this.settings = settings
+  }
+
   async reset(): Promise<void> {
     const { prospects, signals } = seedData()
     this.prospects = new Map(prospects.map(prospect => [prospect.id, prospect]))
     this.signals = new Map(signals.map(signal => [signal.id, signal]))
+    this.invoices = new Map(seedInvoices().map(invoice => [invoice.id, invoice]))
+    this.settings = DEFAULT_SETTINGS
     this.audio = new Map()
   }
 }
@@ -80,6 +122,8 @@ class MemoryStore implements Store {
 const KEYS = {
   prospects: 'rv:prospects',
   signals: 'rv:signals',
+  invoices: 'rv:invoices',
+  settings: 'rv:settings',
   seeded: 'rv:seeded',
   audio: (prospectId: string, format: AudioFormat) => `rv:audio:${prospectId}:${format}`,
 } as const
@@ -139,18 +183,51 @@ class RedisStore implements Store {
     await this.redis.set(KEYS.audio(prospectId, audio.format), audio)
   }
 
+  async listInvoices(): Promise<Invoice[]> {
+    await this.ensureSeeded()
+    const all = await this.redis.hgetall<Record<string, Invoice>>(KEYS.invoices)
+    return Object.values(all ?? {})
+  }
+
+  async getInvoice(id: string): Promise<Invoice | undefined> {
+    await this.ensureSeeded()
+    return (await this.redis.hget<Invoice>(KEYS.invoices, id)) ?? undefined
+  }
+
+  async findInvoiceByToken(token: string): Promise<Invoice | undefined> {
+    return (await this.listInvoices()).find(invoice => invoice.token === token)
+  }
+
+  async saveInvoice(invoice: Invoice): Promise<void> {
+    await this.redis.hset(KEYS.invoices, { [invoice.id]: invoice })
+  }
+
+  async saveInvoices(invoices: Invoice[]): Promise<void> {
+    if (invoices.length > 0) await this.redis.hset(KEYS.invoices, Object.fromEntries(invoices.map(invoice => [invoice.id, invoice])))
+  }
+
+  async getSettings(): Promise<Settings> {
+    return { ...DEFAULT_SETTINGS, ...((await this.redis.get<Settings>(KEYS.settings)) ?? {}) }
+  }
+
+  async saveSettings(settings: Settings): Promise<void> {
+    await this.redis.set(KEYS.settings, settings)
+  }
+
   async reset(): Promise<void> {
     const { prospects, signals } = seedData()
     const pipeline = this.redis.pipeline()
-    pipeline.del(KEYS.prospects, KEYS.signals, ...prospects.flatMap(prospect => AUDIO_FORMATS.map(format => KEYS.audio(prospect.id, format))))
+    pipeline.del(KEYS.prospects, KEYS.signals, KEYS.invoices, KEYS.settings, ...prospects.flatMap(prospect => AUDIO_FORMATS.map(format => KEYS.audio(prospect.id, format))))
     pipeline.hset(KEYS.prospects, Object.fromEntries(prospects.map(prospect => [prospect.id, prospect])))
     pipeline.hset(KEYS.signals, Object.fromEntries(signals.map(signal => [signal.id, signal])))
+    pipeline.hset(KEYS.invoices, Object.fromEntries(seedInvoices().map(invoice => [invoice.id, invoice])))
     pipeline.set(KEYS.seeded, new Date().toISOString())
     await pipeline.exec()
   }
 }
 
-const STORE_KEY = Symbol.for('relance-vocale.store')
+// Bump the suffix when the Store interface changes, so `next dev` drops the instance built from older code.
+const STORE_KEY = Symbol.for('relance-vocale.store.v6')
 
 /** Singleton store for the process, kept on globalThis so `next dev` reloads keep the data. */
 export function getStore(): Store {

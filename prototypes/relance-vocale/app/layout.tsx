@@ -1,12 +1,14 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import type { ReactNode } from 'react'
 import { PRODUCT_NAME } from '@/core/agent-prompt'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: `${PRODUCT_NAME} — relance vocale`,
-  description: 'Signaux d’impayés → pipeline → appel par agent vocal. Démo pour agences d’intérim.',
+  title: `${PRODUCT_NAME} · relance vocale`,
+  description: 'L’agent vocal qui relance les factures échues des agences d’intérim, obtient une date de règlement et suit la promesse jusqu’au virement.',
 }
+
+export const viewport: Viewport = { themeColor: '#f7f4f3' }
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
@@ -16,10 +18,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400;1,9..144,600&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+          href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500&display=swap"
         />
       </head>
-      <body className="font-body bg-paper text-ink antialiased min-h-screen">{children}</body>
+      <body className="font-body bg-canvas text-ink antialiased min-h-screen">{children}</body>
     </html>
   )
 }

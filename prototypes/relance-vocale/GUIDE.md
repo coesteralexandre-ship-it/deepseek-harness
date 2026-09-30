@@ -1,31 +1,36 @@
-# Échéance — démo « signal → pipeline → appel »
+# Échéance — relance vocale des factures, et sa prospection
 
-Application Next.js 16 déployable sur Vercel : des signaux d'impayés qualifient des agences d'intérim, un pipeline les fait avancer, et un agent vocal ElevenLabs les appelle en se présentant comme la démo du produit. Autour de l'appel : une lettre imprimable avec QR code, une page publique où le prospect parle à l'agent ou se fait rappeler, et une note vocale exportable vers lemlist et WhatsApp. Le brainstorm produit, orchestration, outreach et niches est dans [BRAINSTORM.md](./BRAINSTORM.md).
+Application Next.js 16 déployée sur Vercel, en deux espaces. **Relance** : le poste clients d'une agence d'intérim, où l'agent vocal ElevenLabs appelle les clients au sujet des factures échues, obtient une date et un montant de règlement, qualifie les litiges, et suit chaque promesse jusqu'au virement. **Prospection** : des signaux d'impayés qualifient des agences, un pipeline les fait avancer, et l'agent les appelle en se présentant comme la démo du produit, avec une lettre imprimable à QR code, une page publique et une note vocale. L'étude de marché et le positionnement sont dans [BRAINSTORM.md](./BRAINSTORM.md).
 
-## Ce que fait la démo
+## Les écrans
 
 | Page | Rôle |
 |---|---|
-| `/` | Pipeline en colonnes (Nouveau → À appeler → Appel en cours → À rappeler → RDV pris → Pas intéressé). Glisser-déposer pour changer d'étape. |
-| `/signaux` | Boîte de réception des signaux (LinkedIn, offres d'emploi, Pappers, BODACC, presse, avis, inbound, recommandation). Qualifier rend l'entreprise appelable ; ignorer retire le signal du score. Formulaire d'ajout manuel. |
-| `/prospects/[id]` | Fiche : contact, score, angle d'ouverture, signaux, historique des appels avec transcription. Panneau d'appel (navigateur, appel sortant, simulation) et panneau Outreach (lien public, lettre, note vocale, lemlist, WhatsApp). |
-| `/prospects/[id]/lettre` | Letter builder : lettre A4 générée depuis le signal le plus fort, éditable, avec QR code vers la page publique ; impression / PDF ; réécriture par LLM si configurée. |
-| `/l/[token]` | Page publique derrière le QR code et la note vocale, sans menu : le prospect parle à Léa dans le navigateur, demande à être rappelé, ou écoute le message. Chaque ouverture crée un signal inbound de poids 5 et rend l'entreprise appelable. |
-| `/agent` | Tout ce qu'il faut coller dans ElevenLabs : prompt, premier message, variables dynamiques, collecte de données, webhook, outil de prise de RDV, état de la configuration. |
+| `/` | Poste clients : encours échu, promis cette semaine, litiges, file d'appels du jour, et pour chaque facture ce que l'agent a appris au téléphone. |
+| `/factures/[id]` | Fiche facture : console vocale (navigateur, téléphone, simulation), promesses, litige, historique des appels avec transcription, lien de la page de réponse du client, décisions (règlement reçu, reprendre la main). |
+| `/promesses` | Registre des promesses : promis, reçu et paie hebdomadaire sur cinq semaines, toutes les promesses, fiabilité de chaque payeur. |
+| `/f/[token]` | Page publique du client relancé, sans compte : donner une date de paiement, signaler un litige, indiquer la bonne personne, demander un rappel. |
+| `/pipeline` | Pipeline de prospection en colonnes ; glisser-déposer pour changer d'étape. |
+| `/signaux` | Boîte de réception des signaux ; qualifier rend l'entreprise appelable. |
+| `/prospects/[id]` | Fiche prospect : console vocale, signaux, angle, appels, et le panneau lettre, note vocale, lemlist, WhatsApp. |
+| `/prospects/[id]/lettre` | Letter builder : lettre A4 avec QR code vers la page publique, éditable, impression ou PDF. |
+| `/l/[token]` | Page publique du prospect : il parle à l'agent dans le navigateur ou écoute la note vocale. Chaque ouverture crée un signal. |
+| `/agent` | Les deux agents (relance, prospection), leurs consignes, et l'état de chaque branchement. |
+| `/connexion` | Saisie du code d'accès quand `APP_ACCESS_CODE` est défini. |
 
-Trois façons de « passer l'appel » :
+Trois façons de passer un appel, depuis la console vocale d'une facture ou d'un prospect :
 
-1. **Navigateur** — vous jouez le prospect, l'agent vous appelle via WebSocket avec les variables du prospect (`@elevenlabs/react`). À la fin, vous qualifiez l'issue ; si l'agent a appelé l'outil `book_meeting`, le créneau est déjà noté.
-2. **Téléphone** — `POST /api/prospects/[id]/call` déclenche un appel sortant ElevenLabs (Twilio ou SIP). L'issue arrive par le webhook post-appel et déplace la carte.
-3. **Simulation** — sans compte ElevenLabs, génère un appel terminé (transcription, résumé, issue) pour montrer le pipeline.
+1. **Navigateur** — vous jouez l'interlocuteur, l'agent vous parle via WebSocket avec les variables de la facture ou du prospect (`@elevenlabs/react`). À la fin, l'app relit l'analyse de l'agent (`action: 'analyze'`) et met la fiche à jour : promesse, litige, rendez-vous. Si l'analyse ne revient pas, vous qualifiez l'issue à la main.
+2. **Téléphone** — appel sortant ElevenLabs (Twilio ou SIP) vers le numéro saisi. L'app interroge l'analyse jusqu'à la fin de l'appel ; le webhook post-appel fait le même travail quand personne n'a la page ouverte.
+3. **Simulation** — sans minutes consommées, rejoue un appel terminé avec sa transcription.
 
 ## La boucle lettre → QR → appel
 
 1. Le letter builder génère une lettre depuis les signaux (`core/letter.ts`) : accroche selon la source du signal le plus fort, angle d'ouverture, présentation honnête de l'IA, invitation à scanner le QR code, mention « stop ». Le texte est éditable et sauvegardé sur le prospect.
 2. Le QR code pointe sur `/l/<token>` (token opaque par prospect, `landingToken`). La page ne montre ni menu ni pipeline.
 3. Ouvrir la page enregistre un signal « A ouvert le lien de la lettre (QR code) » (au plus un par jour) ; demander un rappel enregistre « A demandé à être rappelé ». Un prospect « Nouveau » ou « Pas intéressé » repasse en « À appeler ».
-4. Sur la page, « Parler à Léa » lance la conversation navigateur avec les variables du prospect ; « Appelez-moi » déclenche un appel sortant vers le numéro saisi ; « Écouter » lit la note vocale.
-5. La conversation navigateur est journalisée par `/api/l/[token]/calls` ; l'issue est « RDV pris » si l'agent a appelé `book_meeting`, sinon « à qualifier » par un humain.
+4. Sur la page, « Parler à Léa » lance la conversation navigateur avec les variables du prospect ; « Écouter » lit la note vocale. « Appelez-moi » n'apparaît que si `PUBLIC_CALLBACK=1` : sans cela, n'importe qui avec le lien pourrait faire composer un numéro.
+5. La conversation navigateur est journalisée par `/api/l/[token]/calls`, puis l'analyse de l'agent remplace l'issue provisoire.
 
 ## Note vocale, lemlist, WhatsApp
 
@@ -41,6 +46,7 @@ Trois façons de « passer l'appel » :
 cd prototypes/relance-vocale
 pnpm install            # lockfile et node_modules propres à ce dossier
 cp .env.example .env.local
+pnpm sync-agents        # crée les deux agents ElevenLabs et écrit leurs identifiants dans .env.local
 pnpm dev                # http://localhost:3000
 ```
 
@@ -48,39 +54,44 @@ Sans aucune variable, l'app tourne en mémoire avec le jeu de test, la simulatio
 
 ## Déployer sur Vercel
 
-1. Importer le dépôt dans Vercel et régler **Root Directory** sur `prototypes/relance-vocale` (le dossier a son propre `pnpm-workspace.yaml` et son propre lockfile : Vercel n'installe pas le monorepo).
-2. Variables d'environnement (Settings → Environment Variables) : reprendre `.env.example`. `NEXT_PUBLIC_APP_URL` = l'URL Vercel ; elle entre dans le QR code, les liens lemlist et les URL audio publiques.
-3. **Persistance** : Storage → Marketplace → Upstash Redis (plan gratuit). Vercel injecte `KV_REST_API_URL` / `KV_REST_API_TOKEN` (ou les noms `UPSTASH_*`) ; l'app les accepte tous les deux. Sans Redis, chaque instance serverless repart du jeu de test : suffisant pour une démo, pas pour un webhook, un QR code ou une URL audio qui doivent retrouver l'état d'une autre instance.
-4. **Protection** : la démo n'a pas d'authentification. Activez Vercel Authentication ou Password Protection avant de partager l'URL, en laissant passer `/l/*`, `/api/l/*`, `/api/webhooks/*` et `/api/tools/*` (« Deployment Protection Exceptions ») : ce sont les seuls chemins que le prospect, ElevenLabs, lemlist et WhatsApp doivent atteindre.
+```sh
+vercel link --yes --project echeance
+vercel env add APP_ACCESS_CODE production      # et les variables ELEVENLABS_* de .env.local
+vercel deploy --prod
+```
+
+1. **Accès** : `APP_ACCESS_CODE` est obligatoire en ligne, puisque l'espace interne lance de vrais appels. `proxy.ts` exige le code (cookie posé par `/connexion`, ou `Authorization: Bearer <code>` pour un outil d'ingestion) partout sauf sur `/l/*`, `/f/*`, `/api/l/*`, `/api/f/*`, `/api/webhooks/*` et `/api/tools/*`.
+2. **Adresse publique** : sans `NEXT_PUBLIC_APP_URL`, l'app prend le domaine de production Vercel pour les QR codes, les liens de réponse et les URL audio.
+3. **Persistance** : Storage → Marketplace → Upstash Redis (plan gratuit). Vercel injecte `KV_REST_API_URL` / `KV_REST_API_TOKEN` (ou les noms `UPSTASH_*`). Sans Redis, chaque instance repart du jeu de test : suffisant pour une démo, pas pour retrouver une promesse ou un appel d'une instance à l'autre.
+4. Le dossier a son propre `pnpm-workspace.yaml` et son propre lockfile : Vercel n'installe pas le monorepo. Pour un import depuis GitHub, régler **Root Directory** sur `prototypes/relance-vocale`.
 
 ## Configurer ElevenLabs
 
-### 1. Clé API et agent
+### 1. Clé API et agents
 
-- Clé : https://elevenlabs.io/app/settings/api-keys → `ELEVENLABS_API_KEY`.
-- Agent : soit `pnpm create-agent` (lit `.env.local`, crée l'agent avec le prompt de `core/agent-prompt.ts`, la collecte de données et le critère d'évaluation, puis affiche l'identifiant), soit dans le dashboard Conversational AI → New agent en collant les blocs de la page `/agent`. Dans les deux cas, `ELEVENLABS_AGENT_ID` = l'identifiant obtenu.
-- Vérifiez sur l'agent : langue **français**, une voix française, et les **variables dynamiques** listées sur `/agent` déclarées avec une valeur par défaut (sinon l'agent refuse de démarrer si une variable manque).
-- Voix : choisissez une voix française dans la Voice Library et mettez son identifiant dans `ELEVENLABS_VOICE_ID` ; elle sert à la note vocale et à l'agent créé par script.
+- Clé : https://elevenlabs.io/app/settings/api-keys → `ELEVENLABS_API_KEY`. Voix française de la Voice Library → `ELEVENLABS_VOICE_ID`.
+- `pnpm sync-agents` crée les deux agents, ou les met à jour s'ils existent : prospection (`core/agent-prompt.ts` → `ELEVENLABS_AGENT_ID`) et relance (`core/relance-prompt.ts` → `ELEVENLABS_RELANCE_AGENT_ID`). Il déclare la langue, la voix, les variables dynamiques avec une valeur par défaut, la collecte de données et le critère d'évaluation, et écrit les identifiants dans `.env.local`.
+- Après une modification des consignes, relancer `pnpm sync-agents`.
 
 ### 2. Conversation dans le navigateur
 
-Rien d'autre : `GET /api/elevenlabs/signed-url` signe l'URL côté serveur, le navigateur ne voit jamais la clé. Le micro doit être autorisé. L'outil client `book_meeting` est fourni par l'app ; déclarez-le sur l'agent (Tools → Client tool, paramètres `slot` et `notes`) pour que le modèle sache l'appeler.
+Rien d'autre : `GET /api/elevenlabs/signed-url` (`?agent=relance` pour l'agent de relance) signe l'URL côté serveur, le navigateur ne voit jamais la clé. Le micro doit être autorisé. La page publique passe par `GET /api/l/[token]/signed-url`, qui n'accepte qu'un jeton connu.
 
 ### 3. Appels sortants
 
 - Importer un numéro : Conversational AI → Phone numbers → Twilio (SID + token) ou SIP trunk. Copier son identifiant dans `ELEVENLABS_PHONE_NUMBER_ID`, et mettre `ELEVENLABS_PHONE_PROVIDER=sip_trunk` si c'est un trunk SIP.
-- Le bouton « Lancer l'appel » de la fiche prospect compose le numéro saisi (par défaut celui du prospect ; mettez le vôtre pour recevoir l'appel). Sur la page publique, « Appelez-moi » compose le numéro saisi par le visiteur.
+- L'onglet « Téléphone » de la console vocale compose le numéro saisi (par défaut celui de la fiche ; mettez le vôtre pour recevoir l'appel). Sur la page publique, « Appelez-moi » exige `PUBLIC_CALLBACK=1`.
 - Les numéros du jeu de test sont fictifs.
 
 ### 4. Webhook post-appel
 
 Settings → Webhooks → Post-call → URL `https://<votre-app>/api/webhooks/elevenlabs`, événement `post_call_transcription`. Copier le secret affiché dans `ELEVENLABS_WEBHOOK_SECRET` : l'app vérifie la signature HMAC (`ElevenLabs-Signature: t=…,v0=…`, tolérance 30 minutes). Le webhook :
 
-- retrouve le prospect par la variable dynamique `prospect_id` (ou par l'identifiant de conversation d'un appel ouvert) ;
-- lit `analysis.data_collection_results.outcome` (`rdv`, `rappel`, `refus`) ou, à défaut, le critère `booked_meeting` ;
+- retrouve la facture par la variable dynamique `invoice_id`, ou le prospect par `prospect_id` (ou par l'identifiant de conversation d'un appel ouvert) ;
+- pour une relance, lit `relance_outcome`, `promise_date`, `promise_amount`, `dispute_reason`, `right_contact` ; pour un prospect, `outcome` (`rdv`, `rappel`, `refus`) ou, à défaut, le critère `booked_meeting` ;
 - enregistre résumé, créneau, transcription, et déplace la carte.
 
-Sans secret configuré, le webhook est accepté sans vérification (mode démo).
+Sans secret configuré, le webhook est accepté sans vérification (mode démo). Il est facultatif tant qu'une page reste ouverte : la console vocale relit la même analyse par `GET /v1/convai/conversations/{id}`.
 
 ### 5. Outil serveur « prise de rendez-vous » (optionnel)
 
@@ -93,7 +104,7 @@ Pour que l'agent enregistre le RDV pendant un appel téléphonique : Agent → T
 | `GET /api/prospects` | Prospects avec signaux et score |
 | `GET/PATCH /api/prospects/[id]` | Fiche ; `{ stage, notes, angle, letter, voiceScript, nextCallAt }` |
 | `POST /api/prospects/[id]/call` | Appel sortant ElevenLabs, `{ toNumber? }` |
-| `POST /api/prospects/[id]/calls` | Journal des conversations navigateur : `{ action: 'open' \| 'close', … }` |
+| `POST /api/prospects/[id]/calls` | Journal des conversations : `{ action: 'open' \| 'close' \| 'analyze', … }` |
 | `POST /api/prospects/[id]/simulate` | Appel simulé, `{ outcome?: 'rdv' \| 'rappel' \| 'refus' }` |
 | `POST /api/prospects/[id]/letter` | `{ action: 'generate' }` modèle depuis les signaux ; `{ action: 'polish', text? }` réécriture LLM |
 | `GET /api/prospects/[id]/outreach` | Liens publics, état des notes vocales, intégrations activées |
@@ -106,31 +117,40 @@ Pour que l'agent enregistre le RDV pendant un appel téléphonique : Agent → T
 | `POST /api/l/[token]/calls` | Journal de la conversation navigateur publique |
 | `GET/POST /api/signals` | Liste ; ingestion (`prospectId` ou `prospect` à créer) |
 | `PATCH /api/signals/[id]` | `{ status: 'qualifie' \| 'ignore' \| 'nouveau' }` |
-| `GET /api/elevenlabs/signed-url` | URL signée pour le navigateur |
+| `POST /api/invoices/[id]/call` | Appel de relance sortant, `{ toNumber? }` |
+| `POST /api/invoices/[id]/calls` | Journal des appels de relance : `{ action: 'open' \| 'close' \| 'analyze', … }` |
+| `POST /api/invoices/[id]/simulate` | Relance simulée, `{ outcome?: 'promesse' \| 'litige' \| 'renvoi' }` |
+| `PATCH /api/invoices/[id]` | Décision : `{ action: 'paid' \| 'takeover' \| 'resume' }` ou `{ action: 'promise', promiseId, status }` |
+| `POST /api/f/[token]` | Réponse du client relancé : `{ answer: 'promesse', date }`, `'litige'`, `'contact'` ou `'rappel'` |
+| `GET /api/l/[token]/signed-url` | URL signée pour la page publique, jeton connu exigé |
+| `GET /api/elevenlabs/signed-url` | URL signée pour le navigateur ; `?agent=relance` pour l'agent de relance |
+| `POST/DELETE /api/auth` | Échange le code d'accès contre le cookie ; déconnexion |
 | `POST /api/webhooks/elevenlabs` | Webhook post-appel |
 | `POST /api/tools/book-meeting` | Outil appelé par l'agent |
 | `POST /api/reset` | Recharge le jeu de test |
 
-Un outil d'enrichissement (Clay, n8n, scraper LinkedIn) alimente le pipeline en appelant `POST /api/signals` ; la page `/agent` montre un exemple de corps.
+Un outil de veille alimente le pipeline en appelant `POST /api/signals` avec `Authorization: Bearer <APP_ACCESS_CODE>` ; la page `/agent` montre un exemple de corps.
 
 ## Structure
 
 ```
-app/(app)/      pages internes : pipeline, signaux, fiche, letter builder, agent
-app/(public)/   page publique /l/[token] (sans menu)
+app/(app)/      pages internes : poste clients, facture, promesses, pipeline, signaux, prospect, letter builder, agent
+app/(public)/   pages publiques /l/[token] (prospect) et /f/[token] (client relancé), sans menu
+app/connexion/  saisie du code d'accès
 app/api/        routes API
-components/     board, cartes, panneau d'appel, outreach, letter builder, page publique
-core/           types, store (mémoire ou Upstash), scoring, prompt, lettre et script vocal,
-                clients ElevenLabs (agent, TTS), lemlist, WhatsApp, DeepSeek
-scripts/        create-agent.ts
+components/     barre latérale, console vocale, tableaux, letter builder, formulaires publics
+core/           types, store (mémoire ou Upstash), factures et promesses (receivables), consignes des deux agents,
+                scoring des signaux, lettre et script vocal, clients ElevenLabs, lemlist, WhatsApp, DeepSeek, accès
+proxy.ts        garde d'accès par code
+scripts/        sync-agents.ts
 ```
 
 Le dossier n'appartient pas au workspace pnpm du dépôt : lint, typecheck et tests du monorepo ne le couvrent pas. Ses vérifications sont `pnpm typecheck` et `pnpm build` dans ce dossier.
 
 ## Limites connues
 
-- Aucune authentification ni multi-tenant : une seule « équipe », un seul agent. Les routes publiques `/l/*` ne sont protégées que par le token du prospect.
-- `pnpm create-agent` envoie le format d'agent documenté par ElevenLabs au moment de l'écriture ; si l'API refuse le corps, créez l'agent dans le dashboard avec les blocs de `/agent`.
+- Un code d'accès partagé, pas de comptes ni de multi-tenant : une seule agence cliente (Flexo RH, jeu de test). Les routes publiques `/l/*` et `/f/*` ne sont protégées que par leur jeton.
+- Les factures viennent du jeu de test : l'import (CSV, Pennylane) et le rapprochement bancaire des promesses restent à construire ; une promesse se marque tenue ou rompue à la main.
 - Le mode mémoire perd les données à chaque redémarrage ; sur Vercel, ajoutez Upstash avant d'utiliser le webhook, le QR code ou les URL audio publiques.
 - lemlist et WhatsApp : les appels API suivent leur documentation actuelle mais n'ont pas été exercés avec de vrais comptes dans ce dépôt ; l'erreur renvoyée par l'API est affichée telle quelle dans le panneau.
 - Les appels à froid par IA sont encadrés : information sur la nature IA dès le premier message (déjà dans le prompt, la lettre et la note vocale), respect de l'opposition, horaires B2B, conservation limitée des transcriptions. Voir la section conformité de [BRAINSTORM.md](./BRAINSTORM.md).

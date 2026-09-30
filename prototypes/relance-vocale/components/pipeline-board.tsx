@@ -3,8 +3,10 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, type DragEvent } from 'react'
 import { ProspectCard } from '@/components/prospect-card'
-import { STAGE_META } from '@/core/stages'
+import { STAGE_META, type Tone } from '@/core/stages'
 import { STAGES, type ProspectView, type Stage } from '@/core/types'
+
+const DOT: Record<Tone, string> = { neutral: 'bg-cobalt-vivid', action: 'bg-blue', warn: 'bg-ochre-vivid', ok: 'bg-emerald-vivid', hot: 'bg-fuchsia-vivid', mute: 'bg-faint', amethyst: 'bg-amethyst-vivid', turquoise: 'bg-turquoise-vivid', sienna: 'bg-sienna-vivid' }
 
 export function PipelineBoard({ prospects }: { prospects: ProspectView[] }) {
   const router = useRouter()
@@ -43,15 +45,15 @@ export function PipelineBoard({ prospects }: { prospects: ProspectView[] }) {
 
   return (
     <section>
-      {error !== null && <p className="mb-3 font-mono text-[11px] uppercase tracking-[0.12em] text-red">{error}</p>}
-      <div className="grid auto-cols-[minmax(218px,1fr)] grid-flow-col gap-3 overflow-x-auto pb-6">
+      {error !== null && <p className="mb-3 font-mono text-[11px] uppercase tracking-[0.12em] text-fuchsia">{error}</p>}
+      <div className="grid auto-cols-[minmax(232px,1fr)] grid-flow-col gap-3 overflow-x-auto pb-6">
         {STAGES.map(stage => {
           const meta = STAGE_META[stage]
           const column = items.filter(item => item.stage === stage)
           return (
             <div
               key={stage}
-              className={`flex min-h-[420px] flex-col gap-3 rounded-sm p-2 transition-colors ${over === stage ? 'column-over' : ''}`}
+              className={`flex min-h-[420px] flex-col gap-3 rounded-xl border border-line/70 bg-card/60 p-2.5 transition-colors ${over === stage ? 'column-over' : ''}`}
               onDragOver={event => {
                 event.preventDefault()
                 if (over !== stage) setOver(stage)
@@ -59,14 +61,15 @@ export function PipelineBoard({ prospects }: { prospects: ProspectView[] }) {
               onDragLeave={() => setOver(current => (current === stage ? null : current))}
               onDrop={event => onDrop(event, stage)}
             >
-              <header className="rule px-1 pt-3">
-                <div className="flex items-baseline justify-between">
-                  <h2 className={`font-mono text-[11px] uppercase tracking-[0.16em] ${meta.tone === 'red' ? 'text-red' : meta.tone === 'green' ? 'text-green' : meta.tone === 'amber' ? 'text-amber' : 'text-ink'}`}>
+              <header className="px-1.5 pt-1.5">
+                <div className="flex items-center justify-between">
+                  <h2 className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-ink">
+                    <span className={`h-1.5 w-1.5 rounded-full ${DOT[meta.tone]}`} />
                     {meta.label}
                   </h2>
-                  <span className="tabular font-mono text-[11px] text-muted">{column.length}</span>
+                  <span className="tabular font-mono text-[11px] text-faint">{column.length}</span>
                 </div>
-                <p className="mt-1 text-[11px] text-muted">{meta.hint}</p>
+                <p className="mt-1 text-[11.5px] text-faint">{meta.hint}</p>
               </header>
               {column.map((item, index) => (
                 <div key={item.id} draggable className="card-drag" onDragStart={event => onDragStart(event, item.id)}>
@@ -74,7 +77,7 @@ export function PipelineBoard({ prospects }: { prospects: ProspectView[] }) {
                 </div>
               ))}
               {column.length === 0 && (
-                <div className="grid flex-1 place-items-center border border-dashed border-line font-mono text-[10px] uppercase tracking-[0.16em] text-muted">
+                <div className="grid flex-1 place-items-center rounded-lg border border-dashed border-line font-mono text-[10px] uppercase tracking-[0.16em] text-faint">
                   Déposer ici
                 </div>
               )}

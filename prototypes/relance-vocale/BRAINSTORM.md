@@ -39,9 +39,11 @@ Une agence d'intérim avance les paies chaque semaine et se fait payer à 45–7
 
 ### Concurrence et différence
 
-Sidetrade, Upflow, Kolleno, LeanPay font l'écrit (email, courrier, portail) et le tableau de bord. Les cabinets de recouvrement prennent 10 à 20 % et cassent la relation client. Nous faisons la **voix et la conversation** : on détecte le litige en direct, on obtient une date, on parle le vocabulaire de l'intérim, et on écrit dans leur outil au lieu de le remplacer.
+Recherche du 30 septembre 2026 : la voix IA n'est plus une différence à elle seule. Finkare, Recovr, GetBill et Sidetrade (Aimie, grands comptes) la vendent déjà en français ; Monk, Stuut et Peakflo fixent l'état de l'art aux États-Unis et en Asie. Upflow, LeanPay, Clearnox, Aston AI et Pennylane restent à l'écrit, mais Upflow capte déjà promesses et litiges dans les réponses écrites. Les cabinets de recouvrement prennent 2,5 à 20 % et arrivent tard.
 
-Ce qui se défend dans le temps : les données conversationnelles sur les motifs de non-paiement (scoring de risque par client), les intégrations, le playbook réglementaire.
+Ce qu'aucun acteur trouvé ne réunit : un outil propre à un métier (relevés d'heures, paie de vendredi, créances cédées au factor), la promesse orale suivie jusqu'au virement (confirmation écrite, vérification, rappel si elle est rompue), la relance précoce et courtoise de J+3 à J+20 au forfait plutôt que le recouvrement tardif à la commission, le relais humain programmé, et l'écriture dans la compta du client. La seule étude indépendante (NBER w33669, dettes de particuliers) montre que les promesses faites à une IA sont moins tenues et qu'un relais humain vers le sixième jour rattrape l'écart : la promesse vérifiée répond à ce constat.
+
+Ce qui se défend dans le temps : les données conversationnelles sur les motifs de non-paiement et la fiabilité de chaque payeur, les intégrations aux logiciels de l'intérim, le playbook réglementaire.
 
 ### Prix (à tester)
 
@@ -104,10 +106,10 @@ Clay / n8n / scraper  ──POST /api/signals──▶  Pipeline (Next.js + Upst
 ### Conformité (à faire relire par un juriste)
 
 - **Nature IA** : l'agent dit qu'il est une IA dans sa première phrase et le répète si on lui demande (obligation de transparence, AI Act art. 50 ; et c'est ce qui rend la démo honnête).
-- **Prospection B2B** : le démarchage téléphonique B2B est autorisé en France ; Bloctel concerne les consommateurs. Respecter l'opposition, ne pas appeler les lignes personnelles des salariés, préférer le standard ou la ligne professionnelle.
+- **Prospection B2B par agent vocal** : le point le plus risqué. L'article L34-5 du CPCE exige le consentement pour prospecter une personne physique par système automatisé (jusqu'à 375 000 €) ; la CNIL tolère le régime information et opposition entre professionnels mais ne dit rien des agents conversationnels. Voie sûre : l'appel demandé par le prospect (lettre à QR code, page publique). Appels à froid réservés aux standards d'entreprise, après avis d'avocat. L'accord préalable est obligatoire pour les consommateurs depuis le 11 août 2026 : sociétés uniquement, pas d'entrepreneurs individuels ni de mobiles personnels.
 - **RGPD** : base légale de l'intérêt légitime, information à la première interaction, droit d'opposition simple (« dites stop »), conservation des transcriptions limitée (par exemple 6 mois), registre des traitements.
 - **Enregistrement** : annoncer que l'échange peut être enregistré ; ne pas cloner la voix d'une personne réelle.
-- **Recouvrement (produit final)** : le recouvrement amiable B2B n'exige pas d'agrément, mais pas de pression, pas de fausse qualité, pas de mention d'une procédure qui n'existe pas.
+- **Recouvrement (produit final)** : les articles R124-1 et suivants encadrent qui recouvre pour le compte d'autrui (assurance, compte dédié, déclaration au procureur). L'agent parle donc au nom de l'agence, qui reste le créancier ; Échéance n'encaisse rien et facture au forfait, jamais à la commission. Pas de pression, pas de fausse qualité, pas de mention d'une procédure qui n'existe pas.
 
 ## 3. Outreach : la démo est le produit
 

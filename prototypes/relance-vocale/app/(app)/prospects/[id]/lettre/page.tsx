@@ -18,7 +18,7 @@ export default async function LetterPage({ params }: { params: Promise<{ id: str
     type: 'svg',
     margin: 0,
     errorCorrectionLevel: 'M',
-    color: { dark: '#17150f', light: '#0000' },
+    color: { dark: '#020d23', light: '#0000' },
   })
 
   return (

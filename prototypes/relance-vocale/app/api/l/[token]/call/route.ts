@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { dynamicVariablesFor } from '@/core/agent-prompt'
 import { startOutboundCall } from '@/core/elevenlabs'
-import { elevenLabsEnv } from '@/core/env'
+import { elevenLabsEnv, publicCallbackEnabled } from '@/core/env'
 import { errorResponse, jsonError, parseBody } from '@/core/http'
 import { CALLBACK_REQUEST_TITLE, recordLandingSignal } from '@/core/landing'
 import { openCall } from '@/core/outcome'
@@ -22,7 +22,7 @@ export async function POST(request: Request, { params }: Context) {
   const parsed = await parseBody(request, body)
   if (!parsed.ok) return parsed.response
   const env = elevenLabsEnv()
-  if (env.apiKey === undefined || env.agentId === undefined || env.phoneNumberId === undefined) {
+  if (!publicCallbackEnabled() || env.apiKey === undefined || env.agentId === undefined || env.phoneNumberId === undefined) {
     return jsonError('Le rappel téléphonique n’est pas activé sur cette démo.', 503)
   }
   const store = getStore()

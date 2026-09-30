@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "create-agent": "node --env-file-if-exists=.env.local scripts/create-agent.ts"
+    "sync-agents": "node --env-file-if-exists=.env.local scripts/sync-agents.ts"
   },
   "dependencies": {
     "@elevenlabs/react": "^1.16.0",

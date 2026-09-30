@@ -95,6 +95,123 @@ export interface ProspectView extends Prospect {
 
 export type Temperature = 'chaud' | 'tiede' | 'froid'
 
+/** Columns of the reminder pipeline, in board order. */
+export const INVOICE_STAGES = ['a_relancer', 'email_envoye', 'appel', 'promesse', 'litige', 'a_vous', 'encaissee'] as const
+export type InvoiceStatus = (typeof INVOICE_STAGES)[number]
+
+export type PromiseStatus = 'attendue' | 'tenue' | 'rompue'
+export type RelanceOutcome = 'promesse' | 'litige' | 'renvoi' | 'rappel' | 'sans_suite'
+
+/** How a debtor behaves; drives the demo autopilot, never real calls. */
+export type PayerProfile = 'fiable' | 'lent' | 'mauvais' | 'litige' | 'absent' | 'renvoi'
+
+/** A payment date and amount the debtor committed to. */
+export interface PaymentPromise {
+  id: string
+  amountEur: number
+  /** ISO date (YYYY-MM-DD) when the agent could parse one, the debtor's words otherwise. */
+  dueDate: string
+  status: PromiseStatus
+  /** Set when the debtor confirmed the written recap. */
+  confirmedAt?: string
+}
+
+/** One reminder conversation about an invoice. */
+export interface RelanceCallRecord {
+  id: string
+  mode: CallMode
+  conversationId?: string
+  startedAt: string
+  endedAt?: string
+  status: CallStatus
+  outcome?: RelanceOutcome
+  summary?: string
+  disputeReason?: string
+  /** Person to call instead, when the debtor redirected the agent. */
+  rightContact?: string
+  transcript?: TranscriptTurn[]
+  error?: string
+}
+
+export type EmailKind = 'rappel' | 'date' | 'recap_promesse' | 'promesse_rompue' | 'recap_appel' | 'litige' | 'renvoi'
+export type EmailStatus = 'brouillon' | 'envoye'
+
+/** An email prepared for the debtor; it leaves only when a person sends it. */
+export interface EmailDraft {
+  id: string
+  kind: EmailKind
+  to: string
+  subject: string
+  body: string
+  status: EmailStatus
+  createdAt: string
+  sentAt?: string
+  /** Marked sent by the demo autopilot; nothing left the app. */
+  simulated?: boolean
+}
+
+/** Who did something on an invoice. */
+export type Actor = 'lea' | 'autopilote' | 'vous' | 'client'
+
+export type ActivityKind = 'email' | 'appel' | 'promesse' | 'litige' | 'paiement' | 'etape' | 'client' | 'note'
+
+/** One line of an invoice's journal. */
+export interface Activity {
+  id: string
+  at: string
+  kind: ActivityKind
+  actor: Actor
+  title: string
+  detail?: string
+}
+
+/** The client's customer who owes the invoice. */
+export interface Debtor {
+  company: string
+  contactName: string
+  contactRole: string
+  /** E.164. */
+  phone: string
+  email: string
+}
+
+/** An overdue invoice of the client agency, followed until it is paid or handed to a human. */
+export interface Invoice {
+  id: string
+  /** Opaque token of the debtor's public answer page. */
+  token: string
+  number: string
+  debtor: Debtor
+  /** What was billed, in the agency's words. */
+  mission: string
+  amountEur: number
+  /** ISO timestamp the invoice fell due. */
+  dueDate: string
+  status: InvoiceStatus
+  /** Index in the reminder playbook of the next step to run. */
+  playbookIndex: number
+  /** One line: what the agent learned so far. */
+  knows: string
+  profile: PayerProfile
+  disputeReason?: string
+  promises: PaymentPromise[]
+  calls: RelanceCallRecord[]
+  emails: EmailDraft[]
+  activities: Activity[]
+  /** A dated follow-up that overrides the playbook (callback requested, broken promise). */
+  followUpAt?: string
+  paidAt?: string
+  updatedAt: string
+}
+
+/** Workspace-wide settings of the reminder engine. */
+export interface Settings {
+  /** Days the demo clock runs ahead of real time. */
+  clockOffsetDays: number
+  /** `demo` runs every step itself; `reel` prepares emails and calls for a person to approve. */
+  autopilot: 'demo' | 'reel'
+}
+
 export type AudioFormat = 'mp3' | 'ogg'
 
 /** Generated voice note, cached per prospect and format. */

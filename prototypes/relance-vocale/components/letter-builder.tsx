@@ -78,55 +78,60 @@ export function LetterBuilder({ prospectId, company, initialText, saved, qrSvg, 
   }
 
   return (
-    <div className="py-8">
-      <div className="print-hidden flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <Link href={`/prospects/${prospectId}`} className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted hover:text-ink">← {company}</Link>
-          <h1 className="font-display mt-2 text-[36px] leading-[0.95] tracking-tight">Lettre + QR code</h1>
-          <p className="mt-2 max-w-xl text-[14px] text-ink-2">
-            Le QR code ouvre <span className="font-mono text-[12px]">{landingUrl}</span> : le prospect parle à Léa ou se fait rappeler, et son scan devient un signal dans le pipeline.
+    <div>
+      <div className="print-hidden flex flex-wrap items-end justify-between gap-5 pb-8 pt-2">
+        <div className="min-w-0 max-w-2xl">
+          <Link href={`/prospects/${prospectId}`} className="font-mono text-[11px] uppercase tracking-[0.16em] text-faint hover:text-ink">← {company}</Link>
+          <h1 className="font-display mt-4 text-[34px] leading-[1.05] sm:text-[44px]">La lettre qui <span className="accent">se fait entendre.</span></h1>
+          <p className="mt-3 text-[14.5px] leading-relaxed text-muted">
+            Le QR code ouvre <span className="break-all font-mono text-[12px] text-blue">{landingUrl}</span> : le prospect parle à Léa ou se fait rappeler, et son scan devient un signal dans le pipeline.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" className="btn" disabled={busy !== null} onClick={() => regenerate('generate')}>Modèle</button>
-          <button type="button" className="btn" disabled={busy !== null || !llm} title={llm ? '' : 'Renseigner DEEPSEEK_API_KEY'} onClick={() => regenerate('polish')}>
+          <button type="button" className="btn btn-sm" disabled={busy !== null} onClick={() => regenerate('generate')}>Modèle</button>
+          <button type="button" className="btn btn-sm" disabled={busy !== null || !llm} title={llm ? '' : 'Renseigner DEEPSEEK_API_KEY'} onClick={() => regenerate('polish')}>
             {busy === 'polish' ? 'Réécriture…' : 'Réécrire avec l’IA'}
           </button>
-          <button type="button" className="btn" disabled={busy !== null} onClick={copy}>Copier</button>
-          <button type="button" className="btn" disabled={busy !== null || !dirty} onClick={save}>{busy === 'save' ? 'Enregistrement…' : dirty ? 'Enregistrer' : 'Enregistrée'}</button>
-          <button type="button" className="btn btn-solid" onClick={() => window.print()}>Imprimer / PDF</button>
+          <button type="button" className="btn btn-sm" disabled={busy !== null} onClick={copy}>Copier</button>
+          <button type="button" className="btn btn-sm" disabled={busy !== null || !dirty} onClick={save}>{busy === 'save' ? 'Enregistrement…' : dirty ? 'Enregistrer' : 'Enregistrée'}</button>
+          <button type="button" className="btn btn-primary" onClick={() => window.print()}>Imprimer / PDF</button>
         </div>
       </div>
-      {notice !== null && <p className="print-hidden mt-3 font-mono text-[11px] uppercase tracking-[0.12em] text-red">{notice}</p>}
+      {notice !== null && <p className="print-hidden mb-4 rounded-lg border border-line bg-sunk px-3 py-2 text-[13px] text-ink-2">{notice}</p>}
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(320px,0.8fr)_auto]">
+      <div className="grid gap-8 xl:grid-cols-[minmax(320px,0.8fr)_auto]">
         <label className="print-hidden block">
-          <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">Texte (un paragraphe par bloc)</span>
+          <span className="label">Texte, un paragraphe par bloc</span>
           <textarea
-            className="field mt-2 min-h-[560px] resize-y border border-line p-3 font-mono text-[12px] leading-relaxed"
+            id="letter-text"
+            className="field mt-2 min-h-[560px] resize-y font-mono text-[12.5px] leading-relaxed"
             value={text}
             onChange={event => setText(event.target.value)}
           />
         </label>
 
-        <div className="overflow-auto">
+        <div className="overflow-auto pb-6">
           <article id="letter-sheet" className="sheet-a4 relative animate-rise">
             <header className="flex items-start justify-between">
               <div>
-                <p className="font-display text-[28px] leading-none tracking-tight">
+                <p className="flex items-center gap-[3mm] text-[22px] font-extrabold leading-none tracking-tight">
+                  <svg viewBox="0 0 32 32" className="h-[9mm] w-[9mm]" aria-hidden="true">
+                    <rect width="32" height="32" rx="8" fill="#1634ef" />
+                    <path d="M9 10h14M9 16h10M9 22h14" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" />
+                    <circle cx="23.5" cy="16" r="2.2" fill="#01a54c" />
+                  </svg>
                   {PRODUCT_NAME}
-                  <span className="text-red">.</span>
                 </p>
-                <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-muted">relance vocale · agences d’intérim</p>
+                <p className="mt-[2.5mm] font-mono text-[8.5px] uppercase tracking-[0.18em] text-[#5d6373]">relance vocale · agences d’intérim</p>
               </div>
               <div className="w-[34mm] text-center">
                 <div className="mx-auto w-[30mm]" dangerouslySetInnerHTML={{ __html: qrSvg }} />
-                <p className="mt-2 font-mono text-[8px] uppercase tracking-[0.14em] text-ink-2">Scannez pour m’entendre</p>
+                <p className="mt-2 font-mono text-[8px] uppercase tracking-[0.14em] text-[#1634ef]">Scannez pour m’entendre</p>
               </div>
             </header>
             <div className="mt-[14mm] space-y-[5mm]">
               {paragraphs.map((paragraph, index) => (
-                <p key={index} className={`whitespace-pre-line ${index === 0 ? 'text-[10.5pt] text-ink-2' : ''} ${paragraph.startsWith('Objet') ? 'font-semibold' : ''}`}>
+                <p key={index} className={`whitespace-pre-line ${index === 0 ? 'text-[10.5pt] text-[#212b44]' : ''} ${paragraph.startsWith('Objet') ? 'font-bold' : ''}`}>
                   {paragraph}
                 </p>
               ))}
