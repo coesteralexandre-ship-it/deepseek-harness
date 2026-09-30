@@ -1,0 +1,5 @@
+# Marks this directory as its own pnpm root. Without it, pnpm walks up to the
+# repository workspace file and installs the harness instead of this app, both
+# locally and on Vercel (Root Directory: prototypes/relance-vocale).
+packages:
+  - '.'
