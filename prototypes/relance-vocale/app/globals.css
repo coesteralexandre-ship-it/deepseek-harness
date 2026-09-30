@@ -220,6 +220,46 @@ pre.sheet {
 .bars span:nth-child(4) { animation-delay: 0.36s; }
 .bars span:nth-child(5) { animation-delay: 0.18s; }
 
+/* A4 letter preview; printing keeps only the sheet. */
+.sheet-a4 {
+  width: 210mm;
+  min-height: 297mm;
+  padding: 22mm 20mm 18mm;
+  background: #fffdf8;
+  color: var(--color-ink);
+  border: 1px solid var(--color-line);
+  box-shadow: 0 30px 60px -40px rgba(23, 21, 15, 0.5);
+  font-size: 11.5pt;
+  line-height: 1.55;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  body::before,
+  .print-hidden {
+    display: none !important;
+  }
+  body * {
+    visibility: hidden;
+  }
+  #letter-sheet,
+  #letter-sheet * {
+    visibility: visible;
+  }
+  #letter-sheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    margin: 0;
+    border: 0;
+    box-shadow: none;
+    animation: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

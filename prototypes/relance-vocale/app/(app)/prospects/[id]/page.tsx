@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { CallPanel } from '@/components/call-panel'
+import { OutreachPanel } from '@/components/outreach-panel'
 import { SourceChip, WeightDots } from '@/components/source-chip'
 import { StageSelect } from '@/components/stage-select'
 import { Stamp } from '@/components/stamp'
@@ -8,6 +9,7 @@ import { Transcript } from '@/components/transcript'
 import { dynamicVariablesFor } from '@/core/agent-prompt'
 import { elevenLabsEnv } from '@/core/env'
 import { formatDateTime, formatKeur, formatPhone, relativeDay } from '@/core/format'
+import { outreachCapabilities, outreachUrls, voiceScriptFor } from '@/core/outreach'
 import { STAGE_META, type Tone } from '@/core/stages'
 import { getStore } from '@/core/store'
 import type { CallOutcome } from '@/core/types'
@@ -35,6 +37,8 @@ export default async function ProspectPage({ params }: { params: Promise<{ id: s
   const phoneReady = browserReady && env.phoneNumberId !== undefined
   const stage = STAGE_META[view.stage]
   const calls = [...view.calls].reverse()
+  const urls = outreachUrls(prospect)
+  const [mp3, ogg] = await Promise.all([store.getAudio(prospect.id, 'mp3'), store.getAudio(prospect.id, 'ogg')])
 
   return (
     <div className="grid gap-12 py-10 lg:grid-cols-[1.1fr_0.9fr]">
@@ -129,6 +133,18 @@ export default async function ProspectPage({ params }: { params: Promise<{ id: s
           browserReady={browserReady}
           phoneReady={phoneReady}
           dynamicVariables={dynamicVariablesFor(view, view.signals)}
+        />
+        <OutreachPanel
+          prospectId={view.id}
+          firstName={view.contact.firstName}
+          email={view.contact.email}
+          phone={view.contact.phone}
+          landingUrl={urls.landingUrl}
+          letterUrl={urls.letterUrl}
+          script={voiceScriptFor(prospect, view.signals)}
+          audioReady={{ mp3: mp3 !== undefined, ogg: ogg !== undefined }}
+          publicAudioUrl={{ mp3: urls.audioUrl('mp3'), ogg: urls.audioUrl('ogg') }}
+          capabilities={outreachCapabilities()}
         />
         <div className="mt-8 space-y-5">
           <StageSelect prospectId={view.id} stage={view.stage} />

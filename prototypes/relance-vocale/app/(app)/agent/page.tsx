@@ -1,6 +1,7 @@
 import { CopyButton } from '@/components/copy-button'
 import { AGENT_NAME, CLIENT_TOOL, DATA_COLLECTION, EVALUATION_CRITERION, FIRST_MESSAGE, PRODUCT_NAME, SYSTEM_PROMPT, dynamicVariablesFor } from '@/core/agent-prompt'
 import { appUrl, elevenLabsEnv, redisEnv, toolSecret } from '@/core/env'
+import { outreachCapabilities } from '@/core/outreach'
 import { getStore } from '@/core/store'
 
 export const dynamic = 'force-dynamic'
@@ -28,6 +29,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default async function AgentPage() {
   const env = elevenLabsEnv()
+  const caps = outreachCapabilities()
   const store = getStore()
   const [prospects, signals] = await Promise.all([store.listProspects(), store.listSignals()])
   const sample = prospects[0]
@@ -62,6 +64,10 @@ export default async function AgentPage() {
               <Check ok={env.webhookSecret !== undefined} label="ELEVENLABS_WEBHOOK_SECRET" hint="Vérifie la signature des webhooks post-appel. Sans lui, le webhook est accepté sans vérification." />
               <Check ok={redisEnv() !== undefined} label="UPSTASH_REDIS_REST_URL / TOKEN" hint="Persistance. Sans Redis, les données repartent du jeu de test à chaque instance." />
               <Check ok={toolSecret() !== undefined} label="TOOL_SECRET" hint="Protège l’outil de prise de rendez-vous appelé par l’agent." />
+              <Check ok={caps.tts} label="ELEVENLABS_VOICE_ID" hint="Voix de la note vocale (MP3 / OGG) et de l’agent créé par script." />
+              <Check ok={caps.llm} label="DEEPSEEK_API_KEY" hint="Réécriture des lettres par LLM ; sans elle, le modèle reste disponible." />
+              <Check ok={caps.lemlist} label="LEMLIST_API_KEY / CAMPAIGN_ID" hint="Export du prospect vers une campagne lemlist avec les liens en variables." />
+              <Check ok={caps.whatsapp} label="WHATSAPP_TOKEN / PHONE_NUMBER_ID" hint="Envoi de la note vocale par l’API Cloud ; sans elle, lien wa.me + fichier OGG." />
             </ul>
           </Section>
 

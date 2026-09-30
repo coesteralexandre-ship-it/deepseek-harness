@@ -21,10 +21,12 @@ const patchBody = z.object({
   stage: z.enum(STAGES).optional(),
   notes: z.string().max(4000).optional(),
   angle: z.string().max(600).optional(),
+  letter: z.string().max(6000).optional(),
+  voiceScript: z.string().max(2000).optional(),
   nextCallAt: z.string().datetime({ offset: true }).nullable().optional(),
 })
 
-/** Move a prospect on the board or edit its notes and opening angle. */
+/** Move a prospect on the board or edit its notes, opening angle, letter and voice script. */
 export async function PATCH(request: Request, { params }: Context) {
   const { id } = await params
   const parsed = await parseBody(request, patchBody)
@@ -32,12 +34,14 @@ export async function PATCH(request: Request, { params }: Context) {
   const store = getStore()
   const prospect = await store.getProspect(id)
   if (prospect === undefined) return jsonError('Prospect introuvable', 404)
-  const { stage, notes, angle, nextCallAt } = parsed.data
+  const { stage, notes, angle, letter, voiceScript, nextCallAt } = parsed.data
   const updated = {
     ...prospect,
     stage: stage ?? prospect.stage,
     notes: notes ?? prospect.notes,
     angle: angle ?? prospect.angle,
+    letter: letter ?? prospect.letter,
+    voiceScript: voiceScript ?? prospect.voiceScript,
     nextCallAt: nextCallAt === null ? undefined : nextCallAt ?? prospect.nextCallAt,
     updatedAt: new Date().toISOString(),
   }

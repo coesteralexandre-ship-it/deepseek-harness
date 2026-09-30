@@ -73,6 +73,12 @@ export interface Prospect {
   stage: Stage
   /** Opening line the agent leads with, derived from the strongest signal. */
   angle: string
+  /** Opaque token of the public page behind the letter's QR code and the voice note. */
+  landingToken: string
+  /** Letter text saved from the letter builder; the template is rebuilt from signals when absent. */
+  letter?: string
+  /** Voice-note script saved from the outreach panel; rebuilt from signals when absent. */
+  voiceScript?: string
   notes?: string
   nextCallAt?: string
   calls: CallRecord[]
@@ -88,3 +94,14 @@ export interface ProspectView extends Prospect {
 }
 
 export type Temperature = 'chaud' | 'tiede' | 'froid'
+
+export type AudioFormat = 'mp3' | 'ogg'
+
+/** Generated voice note, cached per prospect and format. */
+export interface StoredAudio {
+  format: AudioFormat
+  contentType: string
+  base64: string
+  script: string
+  generatedAt: string
+}

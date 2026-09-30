@@ -1,26 +1,33 @@
 import { Redis } from '@upstash/redis'
 import { redisEnv, type RedisEnv } from './env.ts'
 import { seedData } from './seed.ts'
-import type { Prospect, Signal } from './types.ts'
+import type { AudioFormat, Prospect, Signal, StoredAudio } from './types.ts'
 
-/** Persistence for prospects and signals. Implementations seed themselves on first use. */
+/** Persistence for prospects, signals and generated audio. Implementations seed themselves on first use. */
 export interface Store {
   readonly kind: 'memoire' | 'redis'
   listProspects(): Promise<Prospect[]>
   getProspect(id: string): Promise<Prospect | undefined>
+  /** Prospect owning a public landing token. */
+  findProspectByToken(token: string): Promise<Prospect | undefined>
   saveProspect(prospect: Prospect): Promise<void>
   listSignals(): Promise<Signal[]>
   getSignal(id: string): Promise<Signal | undefined>
   saveSignal(signal: Signal): Promise<void>
+  getAudio(prospectId: string, format: AudioFormat): Promise<StoredAudio | undefined>
+  saveAudio(prospectId: string, audio: StoredAudio): Promise<void>
   /** Drop everything and reload the seed. */
   reset(): Promise<void>
 }
+
+const AUDIO_FORMATS: AudioFormat[] = ['mp3', 'ogg']
 
 /** Process-local store: fine for `next dev`; on Vercel each instance starts from the seed. */
 class MemoryStore implements Store {
   readonly kind = 'memoire'
   private prospects = new Map<string, Prospect>()
   private signals = new Map<string, Signal>()
+  private audio = new Map<string, StoredAudio>()
 
   constructor() {
     void this.reset()
@@ -32,6 +39,10 @@ class MemoryStore implements Store {
 
   async getProspect(id: string): Promise<Prospect | undefined> {
     return this.prospects.get(id)
+  }
+
+  async findProspectByToken(token: string): Promise<Prospect | undefined> {
+    return [...this.prospects.values()].find(prospect => prospect.landingToken === token)
   }
 
   async saveProspect(prospect: Prospect): Promise<void> {
@@ -50,10 +61,19 @@ class MemoryStore implements Store {
     this.signals.set(signal.id, signal)
   }
 
+  async getAudio(prospectId: string, format: AudioFormat): Promise<StoredAudio | undefined> {
+    return this.audio.get(`${prospectId}:${format}`)
+  }
+
+  async saveAudio(prospectId: string, audio: StoredAudio): Promise<void> {
+    this.audio.set(`${prospectId}:${audio.format}`, audio)
+  }
+
   async reset(): Promise<void> {
     const { prospects, signals } = seedData()
     this.prospects = new Map(prospects.map(prospect => [prospect.id, prospect]))
     this.signals = new Map(signals.map(signal => [signal.id, signal]))
+    this.audio = new Map()
   }
 }
 
@@ -61,9 +81,10 @@ const KEYS = {
   prospects: 'rv:prospects',
   signals: 'rv:signals',
   seeded: 'rv:seeded',
+  audio: (prospectId: string, format: AudioFormat) => `rv:audio:${prospectId}:${format}`,
 } as const
 
-/** Upstash Redis store: one hash per collection, values stored as JSON. */
+/** Upstash Redis store: one hash per collection, one key per generated audio, values stored as JSON. */
 class RedisStore implements Store {
   readonly kind = 'redis'
   private readonly redis: Redis
@@ -87,6 +108,10 @@ class RedisStore implements Store {
     return (await this.redis.hget<Prospect>(KEYS.prospects, id)) ?? undefined
   }
 
+  async findProspectByToken(token: string): Promise<Prospect | undefined> {
+    return (await this.listProspects()).find(prospect => prospect.landingToken === token)
+  }
+
   async saveProspect(prospect: Prospect): Promise<void> {
     await this.redis.hset(KEYS.prospects, { [prospect.id]: prospect })
   }
@@ -106,10 +131,18 @@ class RedisStore implements Store {
     await this.redis.hset(KEYS.signals, { [signal.id]: signal })
   }
 
+  async getAudio(prospectId: string, format: AudioFormat): Promise<StoredAudio | undefined> {
+    return (await this.redis.get<StoredAudio>(KEYS.audio(prospectId, format))) ?? undefined
+  }
+
+  async saveAudio(prospectId: string, audio: StoredAudio): Promise<void> {
+    await this.redis.set(KEYS.audio(prospectId, audio.format), audio)
+  }
+
   async reset(): Promise<void> {
     const { prospects, signals } = seedData()
     const pipeline = this.redis.pipeline()
-    pipeline.del(KEYS.prospects, KEYS.signals)
+    pipeline.del(KEYS.prospects, KEYS.signals, ...prospects.flatMap(prospect => AUDIO_FORMATS.map(format => KEYS.audio(prospect.id, format))))
     pipeline.hset(KEYS.prospects, Object.fromEntries(prospects.map(prospect => [prospect.id, prospect])))
     pipeline.hset(KEYS.signals, Object.fromEntries(signals.map(signal => [signal.id, signal])))
     pipeline.set(KEYS.seeded, new Date().toISOString())

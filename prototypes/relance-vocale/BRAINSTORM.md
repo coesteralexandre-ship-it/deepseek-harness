@@ -121,9 +121,10 @@ On n'envoie pas une plaquette : **Léa appelle le DAF et lui fait entendre ce qu
 |---|---|---|
 | J0 | Appel Léa | Ouverture sur le signal (« votre post sur les clients à 90 jours… »), démo en direct, proposition de 20 minutes avec un humain |
 | J0 | Email (si RDV) | Confirmation + « voici ce que Léa a noté » (résumé, promesse d'agenda) |
-| J+1 | Email (si injoignable) | « Léa a essayé de vous joindre » + lien « Parlez à Léa maintenant » (conversation dans le navigateur, préchargée avec les variables du prospect) |
-| J+3 | LinkedIn (humain) | Invitation + un message court qui cite le signal, pas le produit |
-| J+7 | Lettre | Une page, un chiffre (« 78 jours de DSO contre 52 pour le secteur »), un QR code vers la conversation Léa. Optionnel, pour les comptes à score ≥ 70 |
+| J+1 | Email (si injoignable) | « Léa vous a laissé un message de 40 secondes » + lien vers la note vocale et « Parlez à Léa maintenant » (conversation dans le navigateur, préchargée avec les variables du prospect). Envoyé par lemlist avec `{{audioUrl}}` et `{{landingUrl}}` |
+| J+2 | WhatsApp (si numéro professionnel) | La même note vocale en OGG, envoyée à la main depuis le lien `wa.me`, ou par l'API Cloud dans une fenêtre de 24 h ouverte par le prospect |
+| J+3 | LinkedIn (humain) | Invitation + message vocal LinkedIn (le MP3 de Léa via l'extension lemlist) ou un texte court qui cite le signal, pas le produit |
+| J+7 | Lettre | Une page générée depuis le signal le plus fort, un chiffre (« 78 jours de DSO contre 52 pour le secteur »), un QR code vers la page publique. Le scan devient un signal de poids 5 et rend la carte appelable. Pour les comptes à score ≥ 70 |
 | J+10 | Appel Léa | Deuxième tentative, autre angle (offre d'emploi plutôt que post LinkedIn) |
 | J+30 | Email | Étude de cas d'un confrère, puis silence jusqu'au prochain signal |
 
@@ -155,11 +156,34 @@ On n'envoie pas une plaquette : **Léa appelle le DAF et lui fait entendre ce qu
 
 Taux de décroché 25–35 %, conversation de plus de 60 secondes sur 50 % des décrochés, rendez-vous sur 15–25 % des conversations, présence au rendez-vous 70 %, signature 20–30 %. Soit environ un client pour 40 à 60 appels. À comparer avec la séquence email actuelle dès les 100 premiers appels.
 
-## 4. Ce que la démo montre déjà
+## 4. Top 10 des niches à prospecter
+
+Critères de classement : douleur de trésorerie et marge fine, volume de petites factures récurrentes (là où une voix infatigable bat un humain), acceptabilité du téléphone chez leurs clients, signaux publics détectables, décideur joignable, friction réglementaire faible (B2B uniquement).
+
+| # | Niche | Pourquoi ça marche | Signal à détecter | Angle d'ouverture |
+|---|---|---|---|---|
+| 1 | Agences d'intérim indépendantes (2–10 agences) | Paies avancées chaque semaine, DSO 50–80 j, une facture par contrat et par mois | Pappers (créances clients ↑), offres « chargé de recouvrement », posts LinkedIn sur le BFR | « Je suis l'agent qui relancerait vos clients ; vous entendez ce qu'ils entendraient » |
+| 2 | Propreté et sécurité privée | Même mécanique que l'intérim (masse salariale mensuelle, grands comptes à 60 j), contrats récurrents, des milliers de PME | Pappers, marchés BOAMP gagnés (volume), avis salariés « paie en retard » | « Vos contrats sont récurrents, vos relances peuvent l'être aussi » |
+| 3 | Transport routier PME et affrètement | Marge 1–3 %, gasoil payé comptant, factures par lot, DSO 45–60 j | Pappers, croissance de flotte, BODACC des chargeurs clients | « Un jour de DSO sur deux cents lots, c'est un camion de trésorerie » |
+| 4 | Sous-traitants BTP second œuvre et loueurs de matériel | Situations à 60–90 j, retenues de garantie, litiges fréquents : l'agent doit escalader vite | BODACC des donneurs d'ordres, injonctions au tribunal de commerce, permis de construire | « Relancer vos situations à J+3 sans que vos conducteurs de travaux décrochent » |
+| 5 | Grossistes CHR et fournisseurs de restaurants | Factures hebdomadaires nombreuses, clients fragiles, relation téléphonique naturelle | BODACC des restaurants clients, avis Google (fermetures), saisonnalité | « Vos clients sont au téléphone toute la journée ; nous aussi » |
+| 6 | Cabinets d'expertise comptable | Honoraires mensuels récurrents sur des centaines de dossiers, et ils prescrivent l'outil à leurs propres clients | Recrutements « assistant(e) facturation », taille du cabinet, réseaux de l'Ordre | « Vos honoraires relancés sans y passer vos soirées, et un outil à proposer à vos clients » |
+| 7 | ESN, agences digitales, portage salarial | TJM facturés mensuellement, DSO 60 j et plus, marges comprimées | LinkedIn (consultants impayés), offres « credit manager », Pappers | « Vos consultants sont payés le 5, vos clients paient le 60 » |
+| 8 | Cabinets de recrutement | Factures de placement élevées, litiges de garantie, métier qui vit au téléphone | LinkedIn, offres « office manager facturation », croissance d'équipe | « Un placement impayé efface dix commissions » |
+| 9 | Franchiseurs et réseaux (redevances) | Redevances mensuelles auprès de dizaines ou centaines de franchisés, relation à préserver | Croissance du réseau (presse franchise), Pappers, BODACC des franchisés | « Relancer un franchisé sans abîmer le réseau » |
+| 10 | Maintenance technique récurrente (ascenseurs, CVC, sécurité incendie, télésurveillance) et coworking | Contrats récurrents, petites factures, clients syndics et PME lents à payer | Appels d'offres, Pappers, avis clients | « Des centaines de petites factures : le cas parfait pour une voix qui ne se lasse pas » |
+
+À éviter au démarrage : tout ce qui touche des particuliers (syndics vers copropriétaires, santé, auto-écoles : encadrement B2C), les avocats (déontologie du recouvrement), les fournisseurs de la grande distribution (rapport de force, paiement imposé), la formation financée par les OPCO (payeur institutionnel que la voix ne fait pas accélérer).
+
+Ordre d'attaque conseillé : 1 seul secteur jusqu'à dix clients (l'intérim), puis 2 et 3 qui réutilisent le même vocabulaire de paie avancée, puis 6 comme canal de prescription vers les autres.
+
+## 5. Ce que la démo montre déjà
 
 - Les signaux et leur poids, la qualification, le score et la température.
 - Le pipeline et les règles de sortie (par l'issue de l'appel).
 - L'appel navigateur avec les variables dynamiques du prospect, l'outil `book_meeting`, l'appel téléphonique sortant, le webhook post-appel qui déplace la carte.
+- La lettre générée depuis le signal le plus fort avec son QR code, la page publique où le prospect parle à Léa ou se fait rappeler, et le scan qui redevient un signal.
+- La note vocale de Léa en MP3 et OGG, l'export vers une campagne lemlist avec les liens en variables, l'envoi WhatsApp par lien ou par l'API Cloud.
 - L'ingestion `POST /api/signals` pour brancher Clay ou n8n.
 
 Ce qu'il reste à construire pour vendre le produit final : la lecture des factures échues (intégrations compta), la séquence J+3 / J+10 / J+20 par facture, l'écriture des promesses dans la compta, le reporting DSO, l'authentification et le multi-tenant.

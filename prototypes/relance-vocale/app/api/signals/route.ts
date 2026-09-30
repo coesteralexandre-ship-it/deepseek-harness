@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { jsonError, parseBody } from '@/core/http'
 import { newId } from '@/core/ids'
 import { getStore } from '@/core/store'
+import { newLandingToken } from '@/core/tokens'
 import { SIGNAL_SOURCES, type Prospect, type Signal } from '@/core/types'
 
 export const dynamic = 'force-dynamic'
@@ -71,6 +72,7 @@ export async function POST(request: Request) {
       contact: draft.contact,
       stage: 'nouveau',
       angle: draft.angle ?? `${parsed.data.title} : je suis l’agent qui relancerait vos clients, et vous entendez en ce moment ce qu’ils entendraient.`,
+      landingToken: newLandingToken(),
       calls: [],
       createdAt: now,
       updatedAt: now,

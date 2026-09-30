@@ -27,7 +27,7 @@ export function Masthead({ storeKind }: { storeKind: 'memoire' | 'redis' }) {
   }
 
   return (
-    <header className="mx-auto max-w-[1440px] px-5 pt-6 sm:px-8">
+    <header className="print-hidden mx-auto max-w-[1440px] px-5 pt-6 sm:px-8">
       <div className="flex flex-wrap items-end justify-between gap-4 pb-4">
         <Link href="/" className="group flex items-baseline gap-3">
           <span className="font-display text-4xl leading-none tracking-tight">

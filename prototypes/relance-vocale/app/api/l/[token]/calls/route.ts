@@ -2,20 +2,19 @@ import { NextResponse } from 'next/server'
 import { applyCallsAction, callsAction } from '@/core/calls'
 import { jsonError, parseBody } from '@/core/http'
 import { getStore } from '@/core/store'
-import { toView } from '@/core/views'
 
 export const dynamic = 'force-dynamic'
 
-type Context = { params: Promise<{ id: string }> }
+type Context = { params: Promise<{ token: string }> }
 
-/** Record a browser conversation: `open` when it connects, `close` with its outcome when it ends. */
+/** Journal of a browser conversation started from the public page. */
 export async function POST(request: Request, { params }: Context) {
-  const { id } = await params
+  const { token } = await params
   const parsed = await parseBody(request, callsAction)
   if (!parsed.ok) return parsed.response
   const store = getStore()
-  const prospect = await store.getProspect(id)
-  if (prospect === undefined) return jsonError('Prospect introuvable', 404)
+  const prospect = await store.findProspectByToken(token)
+  if (prospect === undefined) return jsonError('Lien inconnu', 404)
   const result = await applyCallsAction(store, prospect, parsed.data)
-  return NextResponse.json({ call: result.call, prospect: toView(result.prospect, await store.listSignals()) })
+  return NextResponse.json({ ok: true, callId: result.call?.id })
 }

@@ -20,6 +20,7 @@ export function seedData(): { prospects: Prospect[]; signals: Signal[] } {
   const prospects: Prospect[] = [
     {
       id: 'p-flexo',
+      landingToken: 'lettre-flexo',
       company: 'Flexo RH',
       city: 'Lyon',
       headcount: '3 agences · ~180 intérimaires/mois',
@@ -33,6 +34,7 @@ export function seedData(): { prospects: Prospect[]; signals: Signal[] } {
     },
     {
       id: 'p-kap',
+      landingToken: 'lettre-kap',
       company: 'Kap Intérim',
       city: 'Lille',
       headcount: '5 agences · ~420 intérimaires/mois',
@@ -46,6 +48,7 @@ export function seedData(): { prospects: Prospect[]; signals: Signal[] } {
     },
     {
       id: 'p-horizon',
+      landingToken: 'lettre-horizon',
       company: 'Horizon Emploi',
       city: 'Bordeaux',
       headcount: '2 agences · ~95 intérimaires/mois',
@@ -58,6 +61,7 @@ export function seedData(): { prospects: Prospect[]; signals: Signal[] } {
     },
     {
       id: 'p-nova',
+      landingToken: 'lettre-nova',
       company: 'Nova Travail Temporaire',
       city: 'Marseille',
       headcount: '4 agences · ~300 intérimaires/mois',
@@ -89,6 +93,7 @@ export function seedData(): { prospects: Prospect[]; signals: Signal[] } {
     },
     {
       id: 'p-alliance',
+      landingToken: 'lettre-alliance',
       company: 'Alliance Intérim Sud',
       city: 'Toulouse',
       headcount: '6 agences · ~520 intérimaires/mois',
@@ -121,6 +126,7 @@ export function seedData(): { prospects: Prospect[]; signals: Signal[] } {
     },
     {
       id: 'p-vallees',
+      landingToken: 'lettre-vallees',
       company: 'Intérim des Vallées',
       city: 'Grenoble',
       headcount: '1 agence · ~60 intérimaires/mois',
@@ -133,6 +139,7 @@ export function seedData(): { prospects: Prospect[]; signals: Signal[] } {
     },
     {
       id: 'p-sesame',
+      landingToken: 'lettre-sesame',
       company: 'Sésame RH',
       city: 'Rennes',
       headcount: '2 agences · ~140 intérimaires/mois',
@@ -146,6 +153,7 @@ export function seedData(): { prospects: Prospect[]; signals: Signal[] } {
     },
     {
       id: 'p-batiflex',
+      landingToken: 'lettre-batiflex',
       company: 'Batiflex',
       city: 'Strasbourg',
       headcount: '3 agences · ~210 intérimaires/mois, BTP',
