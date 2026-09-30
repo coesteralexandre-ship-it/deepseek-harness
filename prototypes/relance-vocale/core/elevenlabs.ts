@@ -8,8 +8,11 @@ import type { TranscriptTurn } from './types.ts'
 const API = 'https://api.elevenlabs.io'
 
 export class ElevenLabsError extends Error {
-  constructor(message: string, readonly status: number) {
+  readonly status: number
+
+  constructor(message: string, status: number) {
     super(message)
+    this.status = status
     this.name = 'ElevenLabsError'
   }
 }
@@ -41,6 +44,7 @@ export async function getSignedUrl(agentId: string): Promise<string> {
 
 const conversationResponse = z.object({
   status: z.string(),
+  agent_id: z.string().optional(),
   conversation_id: z.string().optional(),
   transcript: z.array(z.object({ role: z.string(), message: z.string().nullish() })).optional(),
   analysis: z.object({
@@ -53,6 +57,8 @@ const conversationResponse = z.object({
 export interface ConversationAnalysis {
   /** False while ElevenLabs is still processing the conversation. */
   done: boolean
+  /** Agent that held the conversation, when ElevenLabs reports it. */
+  agentId?: string
   summary?: string
   /** Data-collection values by field id, empty values dropped. */
   collected: Record<string, string>
@@ -71,6 +77,7 @@ export async function getConversationAnalysis(conversationId: string): Promise<C
   }
   return {
     done: json.status === 'done' || json.status === 'failed',
+    agentId: json.agent_id,
     summary: json.analysis?.transcript_summary,
     collected,
     passed: Object.entries(json.analysis?.evaluation_criteria_results ?? {}).filter(([, criterion]) => criterion.result === 'success').map(([id]) => id),
@@ -143,7 +150,11 @@ export function verifyWebhookSignature(rawBody: string, header: string | null, s
 
 const collected = z.object({ value: z.unknown().optional(), rationale: z.string().optional() })
 
-/** Fields of the `post_call_transcription` webhook the demo reads; unknown fields are dropped. */
+/**
+ * Fields of the `post_call_transcription` webhook the demo reads; unknown fields are dropped.
+ * The dynamic variables are set by whoever starts the conversation, a public page included,
+ * so they never decide which invoice or prospect a result lands on.
+ */
 export const postCallPayload = z.object({
   type: z.string(),
   event_timestamp: z.number().optional(),
@@ -170,12 +181,6 @@ function asText(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
 }
 
-/** Invoice id a reminder call was started with, when the dynamic variables carried one. */
-export function invoiceIdOf(payload: PostCallPayload): string | undefined {
-  const value = payload.data.conversation_initiation_client_data?.dynamic_variables?.invoice_id
-  return typeof value === 'string' ? value : undefined
-}
-
 /** Translate the webhook analysis of a reminder call into an invoice update. */
 export function relanceResultFromPayload(payload: PostCallPayload): RelanceResult {
   const analysis = payload.data.analysis ?? undefined
@@ -193,12 +198,6 @@ export function relanceResultFromPayload(payload: PostCallPayload): RelanceResul
     rightContact: asText(fields.right_contact?.value),
     transcript: transcript.length > 0 ? transcript : undefined,
   }
-}
-
-/** Prospect id the call was started with, when the dynamic variables carried one. */
-export function prospectIdOf(payload: PostCallPayload): string | undefined {
-  const value = payload.data.conversation_initiation_client_data?.dynamic_variables?.prospect_id
-  return typeof value === 'string' ? value : undefined
 }
 
 /** Translate the webhook analysis into a pipeline result. */

@@ -1,22 +1,19 @@
 import { AGENT_NAME } from './agent-prompt.ts'
-import { CLIENT } from './client.ts'
-import { DAY_MS } from './clock.ts'
+import { parisDate, parisShiftDays, parisWeekday } from './clock.ts'
 import { formatEur } from './format.ts'
 import type { RelanceResult } from './receivables.ts'
 import type { Invoice, RelanceOutcome, TranscriptTurn } from './types.ts'
 
 /** ISO date `days` after `now`, moved to Monday when it falls at the weekend: nobody pays on a Sunday. */
 function isoDay(now: number, days: number): string {
-  const date = new Date(now + days * DAY_MS)
-  const day = date.getDay()
-  if (day === 6) date.setDate(date.getDate() + 2)
-  else if (day === 0) date.setDate(date.getDate() + 1)
-  return date.toLocaleDateString('sv-SE')
+  const date = parisShiftDays(now, days)
+  const day = parisWeekday(date)
+  return parisDate(day === 6 ? parisShiftDays(date, 2) : day === 0 ? parisShiftDays(date, 1) : date)
 }
 
 function opening(invoice: Invoice): TranscriptTurn[] {
   return [
-    { role: 'agent', text: `Bonjour, je suis ${AGENT_NAME}, l’assistante vocale de ${CLIENT.company}. Je suis une intelligence artificielle. J’appelle au sujet de la facture ${invoice.number} : je suis bien avec ${invoice.debtor.contactName} ?` },
+    { role: 'agent', text: `Bonjour, je suis ${AGENT_NAME}, l’assistante vocale de ${invoice.creditor.company}. Je suis une intelligence artificielle. J’appelle au sujet de la facture ${invoice.number} : je suis bien avec ${invoice.debtor.contactName} ?` },
     { role: 'user', text: 'Oui, c’est moi.' },
     { role: 'agent', text: `Il s’agit de ${formatEur(invoice.amountEur, true)} pour ${invoice.mission}. La facture vous est bien parvenue ?` },
   ]
@@ -46,7 +43,7 @@ export function simulatedCall(invoice: Invoice, outcome: RelanceOutcome, now: nu
         transcript: [
           ...opening(invoice),
           { role: 'user', text: 'On l’a, mais le relevé d’heures de la dernière semaine n’est pas signé par notre chef d’équipe. Je ne peux pas la valider.' },
-          { role: 'agent', text: `C’est noté. Je préviens l’équipe de ${CLIENT.company} : elle vous envoie le relevé signé aujourd’hui. Merci, bonne journée.` },
+          { role: 'agent', text: `C’est noté. Je préviens l’équipe de ${invoice.creditor.company} : elle vous envoie le relevé signé aujourd’hui. Merci, bonne journée.` },
         ],
         summary: `${contact} bloque la facture tant que le relevé d’heures de la dernière semaine n’est pas signé.`,
         disputeReason: 'Relevé d’heures de la dernière semaine non signé par le chef d’équipe.',
@@ -68,7 +65,7 @@ export function simulatedCall(invoice: Invoice, outcome: RelanceOutcome, now: nu
         mode: 'simulation',
         outcome,
         transcript: [
-          { role: 'agent', text: `Bonjour, je suis ${AGENT_NAME}, l’assistante vocale de ${CLIENT.company}. Je suis une intelligence artificielle. J’appelle au sujet de la facture ${invoice.number}.` },
+          { role: 'agent', text: `Bonjour, je suis ${AGENT_NAME}, l’assistante vocale de ${invoice.creditor.company}. Je suis une intelligence artificielle. J’appelle au sujet de la facture ${invoice.number}.` },
           { role: 'user', text: 'Je suis en réunion, rappelez-moi demain matin.' },
           { role: 'agent', text: 'Bien sûr, je vous rappelle demain matin. Bonne réunion.' },
         ],
@@ -79,7 +76,7 @@ export function simulatedCall(invoice: Invoice, outcome: RelanceOutcome, now: nu
         mode: 'simulation',
         outcome: 'sans_suite',
         transcript: [
-          { role: 'agent', text: `Bonjour, ici ${AGENT_NAME}, l’assistante vocale de ${CLIENT.company}. Je suis une intelligence artificielle et j’appelais au sujet de la facture ${invoice.number}. Je vous envoie un lien pour nous répondre en une minute. Bonne journée.` },
+          { role: 'agent', text: `Bonjour, ici ${AGENT_NAME}, l’assistante vocale de ${invoice.creditor.company}. Je suis une intelligence artificielle et j’appelais au sujet de la facture ${invoice.number}. Je vous envoie un lien pour nous répondre en une minute. Bonne journée.` },
         ],
         summary: 'Répondeur. Message laissé et lien de réponse envoyé.',
       }

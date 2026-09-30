@@ -11,7 +11,7 @@ export interface SourceMeta {
 export const SOURCE_META: Record<SignalSource, SourceMeta> = {
   linkedin: { label: 'LinkedIn', glyph: 'in', how: 'Posts et commentaires du dirigeant ou du DAF (mots-clés : impayés, BFR, retard de paiement, affacturage)' },
   offre_emploi: { label: 'Offre d’emploi', glyph: 'job', how: 'Annonces « chargé de recouvrement », « credit manager », « comptable clients » (Indeed, WTTJ, APEC)' },
-  pappers: { label: 'Pappers', glyph: '€', how: 'Comptes annuels : créances clients en hausse, DSO estimé au-dessus du secteur' },
+  pappers: { label: 'Comptes publiés', glyph: '€', how: 'Ratios INPI publics : délai client (crédit clients en jours) au-dessus de la médiane des agences du département' },
   bodacc: { label: 'BODACC', glyph: 'jo', how: 'Un client de l’agence entre en sauvegarde ou redressement : ses factures deviennent douteuses' },
   presse: { label: 'Presse', glyph: 'news', how: 'Ouverture d’agences, levée, croissance rapide : le BFR se tend avec le volume' },
   avis: { label: 'Avis', glyph: '★', how: 'Avis Google / Indeed d’intérimaires citant des paies en retard : symptôme de trésorerie' },

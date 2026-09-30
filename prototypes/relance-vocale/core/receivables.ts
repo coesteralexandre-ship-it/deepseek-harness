@@ -1,4 +1,4 @@
-import { DAY_MS } from './clock.ts'
+import { DAY_MS, parisDate, parisDayAt, parisDayDiff, parisParts, parisShiftDays, parisTime, parisWeekday } from './clock.ts'
 import { draftEmail } from './emails.ts'
 import { daysSince, formatDay, formatEur } from './format.ts'
 import { newId } from './ids.ts'
@@ -65,20 +65,37 @@ export interface NextAction {
   playbookIndex?: number
 }
 
-/** 10:00 local time on the day `days` after `iso`. */
+/** Two amounts closer than this are the same amount: sums of cents in floating point drift by a fraction of a cent. */
+export const AMOUNT_TOLERANCE = 0.011
+
+/** 10:00 Paris time on the day `days` after `iso`. */
 function dayAt(iso: string, days: number, hour = 10): string {
-  const date = new Date(Date.parse(iso) + days * DAY_MS)
-  date.setHours(hour, 0, 0, 0)
-  return date.toISOString()
+  return parisDayAt(iso, days, hour)
 }
 
-/** Same time on the next working day when `iso` falls on a Saturday or a Sunday: nobody is called at the weekend. */
+/** Same time on the next working day when `iso` falls on a Saturday or a Sunday in Paris: nobody is called at the weekend. */
 function workingDay(iso: string): string {
-  const date = new Date(iso)
-  const day = date.getDay()
-  if (day === 6) date.setDate(date.getDate() + 2)
-  else if (day === 0) date.setDate(date.getDate() + 1)
-  return date.toISOString()
+  const day = parisWeekday(iso)
+  if (day === 6) return new Date(parisShiftDays(iso, 2)).toISOString()
+  if (day === 0) return new Date(parisShiftDays(iso, 1)).toISOString()
+  return iso
+}
+
+/** When playbook step `index` of `invoice` comes due; undefined past the last step. */
+function playbookStepAt(invoice: Invoice, index: number): string | undefined {
+  const step = PLAYBOOK[index]
+  return step === undefined ? undefined : workingDay(dayAt(invoice.sequenceAnchor ?? invoice.dueDate, step.day))
+}
+
+/** Amount still owed: the invoice minus the promises already kept, rounded to the cent. */
+export function remainingEur(invoice: Invoice): number {
+  const kept = invoice.promises.filter(promise => promise.status === 'tenue').reduce((sum, promise) => sum + promise.amountEur, 0)
+  return Math.max(0, Math.round((invoice.amountEur - kept) * 100) / 100)
+}
+
+/** Amount a board column adds up for this invoice: the full amount once paid, what is still owed otherwise. */
+export function boardAmountEur(invoice: Invoice): number {
+  return invoice.status === 'encaissee' ? invoice.amountEur : remainingEur(invoice)
 }
 
 export function openPromise(invoice: Invoice): PaymentPromise | undefined {
@@ -94,8 +111,9 @@ export function nextAction(invoice: Invoice): NextAction | undefined {
   }
   if (invoice.followUpAt !== undefined) return { kind: 'appel', at: workingDay(invoice.followUpAt), label: 'Rappel convenu' }
   const step = PLAYBOOK[invoice.playbookIndex]
-  if (step === undefined) return undefined
-  return { kind: step.kind, at: workingDay(dayAt(invoice.dueDate, step.day)), label: step.label, email: step.email, playbookIndex: invoice.playbookIndex }
+  const at = playbookStepAt(invoice, invoice.playbookIndex)
+  if (step === undefined || at === undefined) return undefined
+  return { kind: step.kind, at, label: step.label, email: step.email, playbookIndex: invoice.playbookIndex }
 }
 
 /** Append one line to the invoice's journal. */
@@ -145,12 +163,37 @@ function unansweredStreak(calls: readonly RelanceCallRecord[]): number {
   return streak
 }
 
-/** Close the matching call, log what it produced, draft the follow-up email, and move the invoice. */
-export function applyRelanceResult(invoice: Invoice, result: RelanceResult, now: number): Invoice {
+/** Why a call result must leave the invoice where it is: paid, handed over, or disputed while the call does not confirm the dispute. */
+function frozenBy(invoice: Invoice, outcome: RelanceOutcome): string | undefined {
+  if (invoice.status === 'encaissee') return 'Facture déjà encaissée : statut inchangé.'
+  if (invoice.status === 'a_vous') return 'Votre équipe a repris la main : statut inchangé.'
+  if (invoice.status === 'litige' && outcome !== 'litige') return 'Facture en litige : statut inchangé.'
+  return undefined
+}
+
+/** Whether the pending promise's date has passed, in Paris; a date the agent could not parse never counts as passed. */
+function promiseOverdue(promise: PaymentPromise, now: number): boolean {
+  return !Number.isNaN(Date.parse(promise.dueDate)) && parisDayDiff(now, promise.dueDate) > 0
+}
+
+/**
+ * Close the matching call, log what it produced, draft the follow-up email, and move the invoice.
+ * The same result applied twice (webhook retry, in-app analysis) changes nothing the second time.
+ * A finished call consumes the playbook's pending call step when that step is due; the autopilot,
+ * which already consumed the step it runs, passes `consumeDueCallStep = false`.
+ */
+export function applyRelanceResult(invoice: Invoice, result: RelanceResult, now: number, consumeDueCallStep = true): Invoice {
   const iso = new Date(now).toISOString()
   const existing = invoice.calls.find(call =>
     (result.callId !== undefined && call.id === result.callId)
     || (result.conversationId !== undefined && call.conversationId === result.conversationId))
+  if (existing !== undefined && (existing.status === 'termine' || (existing.status === 'echec' && result.error !== undefined))) {
+    // Already applied: only fill in a transcript or a summary that arrived late.
+    const summary = existing.summary ?? result.summary
+    const transcript = existing.transcript ?? result.transcript
+    if (summary === existing.summary && transcript === existing.transcript) return invoice
+    return { ...invoice, calls: invoice.calls.map(call => (call.id === existing.id ? { ...existing, summary, transcript } : call)) }
+  }
   const closed: RelanceCallRecord = {
     id: existing?.id ?? newId('rc'),
     mode: existing?.mode ?? result.mode ?? 'telephone',
@@ -170,27 +213,41 @@ export function applyRelanceResult(invoice: Invoice, result: RelanceResult, now:
   if (result.error !== undefined) {
     return logActivity(next, { kind: 'appel', actor: 'lea', title: 'Appel échoué', detail: result.error }, now)
   }
-  // A finished call consumes the playbook's pending call step.
-  if (PLAYBOOK[next.playbookIndex]?.kind === 'appel') next = { ...next, playbookIndex: next.playbookIndex + 1 }
   const meta = RELANCE_OUTCOME_META[result.outcome]
-  next = logActivity(next, { kind: 'appel', actor: 'lea', title: `Appel : ${meta.label.toLowerCase()}`, detail: result.summary }, now)
+  const title = `Appel : ${meta.label.toLowerCase()}`
+  // A late result (webhook after the invoice was paid, handed over or disputed) is logged, nothing more.
+  const frozen = frozenBy(invoice, result.outcome)
+  if (frozen !== undefined) return logActivity(next, { kind: 'appel', actor: 'lea', title, detail: result.summary !== undefined ? `${result.summary} ${frozen}` : frozen }, now)
+  const dueAt = playbookStepAt(next, next.playbookIndex)
+  if (consumeDueCallStep && PLAYBOOK[next.playbookIndex]?.kind === 'appel' && dueAt !== undefined && Date.parse(dueAt) <= now) {
+    next = { ...next, playbookIndex: next.playbookIndex + 1 }
+  }
+  next = logActivity(next, { kind: 'appel', actor: 'lea', title, detail: result.summary }, now)
 
   switch (result.outcome) {
     case 'promesse': {
-      const date = result.promiseDate ?? dayAt(iso, 5).slice(0, 10)
-      const promise: PaymentPromise = { id: newId('pr'), amountEur: result.promiseAmountEur ?? next.amountEur, dueDate: date, status: 'attendue' }
-      next = { ...next, status: 'promesse', followUpAt: undefined, promises: [...next.promises, promise], knows: `${formatEur(promise.amountEur)} promis pour le ${formatDay(date)}` }
+      const date = result.promiseDate ?? parisDate(dayAt(iso, 5))
+      const promise: PaymentPromise = { id: newId('pr'), amountEur: result.promiseAmountEur ?? remainingEur(next), dueDate: date, status: 'attendue' }
+      // The new date replaces the pending one: broken if its date already passed, dropped otherwise.
+      const promises = next.promises
+        .filter(entry => entry.status !== 'attendue' || promiseOverdue(entry, now))
+        .map(entry => (entry.status === 'attendue' ? { ...entry, status: 'rompue' as const } : entry))
+      next = { ...next, status: 'promesse', followUpAt: undefined, promises: [...promises, promise], knows: `${formatEur(promise.amountEur)} promis pour le ${formatDay(date)}` }
       next = logActivity(next, { kind: 'promesse', actor: 'lea', title: `Promesse : ${formatEur(promise.amountEur)} le ${formatDay(date)}` }, now)
       return addDraft(next, 'recap_promesse', now)
     }
     case 'litige':
-      next = { ...next, status: 'litige', followUpAt: undefined, disputeReason: result.disputeReason ?? next.disputeReason, knows: result.disputeReason ?? 'Litige exprimé, motif à préciser' }
+      // A disputed invoice will not be paid on the promised date: the pending promise no longer holds.
+      next = { ...next, status: 'litige', followUpAt: undefined, promises: next.promises.filter(entry => entry.status !== 'attendue'), disputeReason: result.disputeReason ?? next.disputeReason, knows: result.disputeReason ?? 'Litige exprimé, motif à préciser' }
       next = logActivity(next, { kind: 'litige', actor: 'lea', title: 'Litige qualifié', detail: next.disputeReason }, now)
       return addDraft(next, 'litige', now)
     case 'renvoi':
-      next = { ...next, status: 'a_relancer', followUpAt: dayAt(iso, 3), knows: result.rightContact !== undefined ? `Facture à renvoyer à ${result.rightContact}` : 'Facture jamais reçue, à renvoyer' }
+      // An invoice the debtor never received cannot be paid on the promised date either.
+      next = { ...next, status: 'a_relancer', followUpAt: dayAt(iso, 3), promises: next.promises.filter(entry => entry.status !== 'attendue'), knows: result.rightContact !== undefined ? `Facture à renvoyer à ${result.rightContact}` : 'Facture jamais reçue, à renvoyer' }
       return addDraft(next, 'renvoi', now)
     default: {
+      // No answer or a callback request does not cancel a promise still pending: its verification stays the next step.
+      if (openPromise(next) !== undefined) return { ...next, status: 'promesse', followUpAt: undefined }
       const streak = unansweredStreak(next.calls)
       if (streak >= 3) {
         next = { ...next, status: 'a_vous', followUpAt: undefined, knows: `${streak} appels sans date obtenue` }
@@ -241,15 +298,22 @@ export function breakPromise(invoice: Invoice, promiseId: string, now: number, a
   return addDraft(next, 'promesse_rompue', now)
 }
 
+/**
+ * Record a promise as kept. The invoice is paid once the kept promises cover it to the cent; a partial
+ * payment with no other promise pending leaves the Promesse column and Léa calls back for the balance.
+ */
 export function keepPromise(invoice: Invoice, promiseId: string, now: number, actor: Activity['actor']): Invoice {
   const promise = invoice.promises.find(entry => entry.id === promiseId)
   if (promise === undefined) return invoice
   const promises = invoice.promises.map(entry => (entry.id === promiseId ? { ...entry, status: 'tenue' as const } : entry))
-  const paidEur = promises.filter(entry => entry.status === 'tenue').reduce((sum, entry) => sum + entry.amountEur, 0)
   const next = logActivity({ ...invoice, promises }, { kind: 'promesse', actor, title: `Promesse tenue : ${formatEur(promise.amountEur)}` }, now)
-  if (paidEur >= invoice.amountEur) return markPaid(next, now, actor)
+  const owed = remainingEur(next)
+  if (owed < AMOUNT_TOLERANCE) return markPaid(next, now, actor)
   const rest = promises.find(entry => entry.status === 'attendue')
-  return { ...next, knows: rest !== undefined ? `Solde de ${formatEur(rest.amountEur)} attendu le ${formatDay(rest.dueDate)}` : next.knows }
+  if (rest !== undefined) return { ...next, knows: `Solde de ${formatEur(rest.amountEur)} attendu le ${formatDay(rest.dueDate)}` }
+  const knows = `Acompte reçu, solde de ${formatEur(owed, true)} à obtenir`
+  if (next.status !== 'promesse') return { ...next, knows }
+  return { ...next, status: 'appel', followUpAt: dayAt(new Date(now).toISOString(), 1, 9), knows }
 }
 
 /** Map free text from the agent's data collection to a reminder outcome. */
@@ -279,12 +343,10 @@ export function daysLate(invoice: Invoice, now: number): number {
   return daysSince(invoice.dueDate, now)
 }
 
-/** Monday 00:00 of the week containing `time`, local time. */
+/** Monday 00:00 of the week containing `time`, Paris time. */
 export function weekStart(time: number): number {
-  const date = new Date(time)
-  date.setHours(0, 0, 0, 0)
-  date.setDate(date.getDate() - ((date.getDay() + 6) % 7))
-  return date.getTime()
+  const p = parisParts(time)
+  return parisTime(p.year, p.month, p.day - ((p.weekday + 6) % 7))
 }
 
 export interface ReceivablesKpis {
@@ -303,7 +365,7 @@ export interface ReceivablesKpis {
 export function receivablesKpis(invoices: readonly Invoice[], now: number): ReceivablesKpis {
   const open = invoices.filter(invoice => invoice.status !== 'encaissee')
   const start = weekStart(now)
-  const end = start + 7 * DAY_MS
+  const end = parisShiftDays(start, 7)
   const promises = invoices.flatMap(invoice => invoice.promises)
   const thisWeek = promises.filter(promise => {
     const time = Date.parse(promise.dueDate)
@@ -311,12 +373,12 @@ export function receivablesKpis(invoices: readonly Invoice[], now: number): Rece
   })
   const settled = promises.filter(promise => promise.status !== 'attendue')
   return {
-    overdueEur: open.reduce((sum, invoice) => sum + invoice.amountEur, 0),
+    overdueEur: open.reduce((sum, invoice) => sum + remainingEur(invoice), 0),
     overdueCount: open.length,
     debtorCount: new Set(open.map(invoice => invoice.debtor.company)).size,
     promisedThisWeekEur: thisWeek.reduce((sum, promise) => sum + promise.amountEur, 0),
     receivedThisWeekEur: thisWeek.filter(promise => promise.status === 'tenue').reduce((sum, promise) => sum + promise.amountEur, 0),
-    collectedEur: invoices.filter(invoice => invoice.status === 'encaissee').reduce((sum, invoice) => sum + invoice.amountEur, 0),
+    collectedEur: invoices.reduce((sum, invoice) => sum + (invoice.status === 'encaissee' ? invoice.amountEur : invoice.amountEur - remainingEur(invoice)), 0),
     keptRate: settled.length === 0 ? undefined : settled.filter(promise => promise.status === 'tenue').length / settled.length,
     leaActions7d: invoices.flatMap(invoice => invoice.activities).filter(activity => (activity.actor === 'lea' || activity.actor === 'autopilote') && now - Date.parse(activity.at) < 7 * DAY_MS && Date.parse(activity.at) <= now).length,
     openDisputes: open.filter(invoice => invoice.status === 'litige').length,
@@ -333,12 +395,12 @@ export interface WeekForecast {
 
 /** Promised and received amounts for `count` weeks, starting `before` weeks ago. */
 export function weeklyForecast(invoices: readonly Invoice[], now: number, before = 2, count = 5): WeekForecast[] {
-  const first = weekStart(now) - before * 7 * DAY_MS
-  const weeks: WeekForecast[] = Array.from({ length: count }, (_, index) => ({ start: new Date(first + index * 7 * DAY_MS).toISOString(), promisedEur: 0, receivedEur: 0 }))
+  const first = parisShiftDays(weekStart(now), -7 * before)
+  const weeks: WeekForecast[] = Array.from({ length: count }, (_, index) => ({ start: new Date(parisShiftDays(first, 7 * index)).toISOString(), promisedEur: 0, receivedEur: 0 }))
   for (const promise of invoices.flatMap(invoice => invoice.promises)) {
     const time = Date.parse(promise.dueDate)
     if (Number.isNaN(time)) continue
-    const week = weeks[Math.floor((time - first) / (7 * DAY_MS))]
+    const week = weeks[Math.floor(parisDayDiff(time, first) / 7)]
     if (week === undefined) continue
     week.promisedEur += promise.amountEur
     if (promise.status === 'tenue') week.receivedEur += promise.amountEur
@@ -366,7 +428,7 @@ export function payerReliability(invoices: readonly Invoice[], now: number): Pay
         company,
         kept: promises.filter(promise => promise.status === 'tenue').length,
         settled: promises.length,
-        overdueEur: open.reduce((sum, invoice) => sum + invoice.amountEur, 0),
+        overdueEur: open.reduce((sum, invoice) => sum + remainingEur(invoice), 0),
         avgDaysLate: open.length === 0 ? 0 : Math.round(open.reduce((sum, invoice) => sum + daysLate(invoice, now), 0) / open.length),
       }
     })

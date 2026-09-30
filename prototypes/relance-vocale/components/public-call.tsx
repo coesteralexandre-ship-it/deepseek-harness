@@ -40,10 +40,8 @@ function Inner({ token, firstName, callerName, dynamicVariables, browserReady, p
   const [notice, setNotice] = useState<string | null>(null)
   const [phone, setPhone] = useState('')
   const [phoneState, setPhoneState] = useState<'idle' | 'sending' | 'sent'>('idle')
-  const callId = useRef<string | undefined>(undefined)
   const conversationId = useRef<string | undefined>(undefined)
   const turnsRef = useRef<TranscriptTurn[]>([])
-  const bookedRef = useRef<string | null>(null)
   const listRef = useRef<HTMLOListElement>(null)
 
   const conversation = useConversation({
@@ -51,7 +49,6 @@ function Inner({ token, firstName, callerName, dynamicVariables, browserReady, p
       [CLIENT_TOOL.name]: async (parameters: { slot?: string; notes?: string }) => {
         const slot = parameters.slot?.trim()
         if (slot === undefined || slot === '') return 'Il manque le créneau : demande un jour et une heure.'
-        bookedRef.current = slot
         setBooked(slot)
         return `Rendez-vous enregistré : ${slot}.`
       },
@@ -59,8 +56,7 @@ function Inner({ token, firstName, callerName, dynamicVariables, browserReady, p
     onConnect: async ({ conversationId: id }) => {
       conversationId.current = id
       setPhase('live')
-      const opened = await postJson(`/api/l/${token}/calls`, { action: 'open', mode: 'navigateur', conversationId: id })
-      callId.current = (opened.data as { callId?: string } | undefined)?.callId
+      await postJson(`/api/l/${token}/calls`, { action: 'open', mode: 'navigateur', conversationId: id })
     },
     onMessage: ({ message, role }) => {
       if (message.trim() === '') return
@@ -71,19 +67,12 @@ function Inner({ token, firstName, callerName, dynamicVariables, browserReady, p
     onDisconnect: async details => {
       if (details.reason === 'error') setNotice(details.message)
       setPhase('ended')
-      await postJson(`/api/l/${token}/calls`, {
-        action: 'close',
-        callId: callId.current,
-        conversationId: conversationId.current,
-        outcome: bookedRef.current !== null ? 'rdv' : 'inconnu',
-        meetingSlot: bookedRef.current ?? undefined,
-        transcript: turnsRef.current,
-      })
-      // Then let the agent's own analysis replace the provisional outcome.
+      // The server closes the call with the agent's own analysis; the post-call webhook covers a late one.
       const ended = conversationId.current
-      for (let attempt = 0; ended !== undefined && attempt < 6; attempt += 1) {
-        await new Promise(resolve => setTimeout(resolve, 3000))
-        const analyzed = await postJson(`/api/l/${token}/calls`, { action: 'analyze', conversationId: ended, callId: callId.current })
+      // ElevenLabs can take a minute or two to analyse a call; the webhook covers anything later.
+      for (let attempt = 0; ended !== undefined && attempt < 30; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 4000))
+        const analyzed = await postJson(`/api/l/${token}/calls`, { action: 'analyze', conversationId: ended })
         if (!analyzed.ok || (analyzed.data as { pending?: boolean } | undefined)?.pending !== true) break
       }
     },
@@ -97,7 +86,6 @@ function Inner({ token, firstName, callerName, dynamicVariables, browserReady, p
   async function start() {
     setNotice(null)
     turnsRef.current = []
-    bookedRef.current = null
     setTurns([])
     setBooked(null)
     setPhase('starting')

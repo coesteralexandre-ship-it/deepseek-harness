@@ -1,6 +1,6 @@
-import { DAY_MS } from './clock.ts'
-import { daysSince, formatDay, formatLongDay, relativeFuture } from './format.ts'
-import { OPEN_STAGES, PLAYBOOK, STAGE_META, nextAction, openPromise, receivablesKpis, type NextActionKind, type ReceivablesKpis } from './receivables.ts'
+import { BUSINESS_TZ, DAY_MS, parisDayAt, parisDayDiff } from './clock.ts'
+import { daysSince, formatDay } from './format.ts'
+import { OPEN_STAGES, PLAYBOOK, STAGE_META, boardAmountEur, nextAction, openPromise, receivablesKpis, type NextActionKind, type ReceivablesKpis } from './receivables.ts'
 import type { Tone } from './stages.ts'
 import { INVOICE_STAGES, type Activity, type Actor, type Invoice, type InvoiceStatus, type Settings } from './types.ts'
 
@@ -80,6 +80,18 @@ export function ago(iso: string, now: number): string {
   return `il y a ${Math.floor(hours / 24)} j`
 }
 
+const WEEKDAY = new Intl.DateTimeFormat('fr-FR', { weekday: 'short', timeZone: BUSINESS_TZ })
+const LONG_DAY = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: BUSINESS_TZ })
+
+/** "dans 2 j", "aujourd’hui", "en retard de 3 j", counted in Paris calendar days. */
+function whenLabel(iso: string, now: number): string {
+  const days = parisDayDiff(iso, now)
+  if (days < 0) return `en retard de ${-days} j`
+  if (days === 0) return 'aujourd’hui'
+  if (days === 1) return 'demain'
+  return `dans ${days} j`
+}
+
 function cardOf(invoice: Invoice, now: number): CardView {
   const action = nextAction(invoice)
   const promise = openPromise(invoice) ?? (invoice.status === 'encaissee' ? undefined : [...invoice.promises].reverse().find(entry => entry.status === 'attendue'))
@@ -93,7 +105,7 @@ function cardOf(invoice: Invoice, now: number): CardView {
     amountEur: invoice.amountEur,
     daysLate: daysSince(invoice.dueDate, now),
     knows: invoice.knows,
-    next: action === undefined ? undefined : { kind: action.kind, label: action.label, when: relativeFuture(action.at, now), due: Date.parse(action.at) <= now },
+    next: action === undefined ? undefined : { kind: action.kind, label: action.label, when: whenLabel(action.at, now), due: Date.parse(action.at) <= now },
     drafts: invoice.emails.filter(email => email.status === 'brouillon').length,
     promise: promise === undefined ? undefined : { amountEur: promise.amountEur, day: formatDay(promise.dueDate), confirmed: promise.confirmedAt !== undefined },
     broken: invoice.promises.filter(entry => entry.status === 'rompue').length,
@@ -116,11 +128,9 @@ export function boardView(all: readonly Invoice[], settings: Settings, now: numb
     .sort((a, b) => Date.parse(b.activity.at) - Date.parse(a.activity.at))
     .slice(0, 18)
     .map(({ activity, invoice }) => ({ id: activity.id, invoiceId: invoice.id, company: invoice.debtor.company, actor: activity.actor, kind: activity.kind, title: activity.title, detail: activity.detail, at: activity.at, ago: ago(activity.at, now) }))
-  const today = new Date(now)
-  today.setHours(0, 0, 0, 0)
   const agenda: AgendaDay[] = Array.from({ length: 7 }, (_, index) => {
-    const day = today.getTime() + index * DAY_MS
-    return { day: new Date(day).toISOString(), label: index === 0 ? 'Auj.' : new Intl.DateTimeFormat('fr-FR', { weekday: 'short' }).format(new Date(day)).replace('.', ''), counts: { email: 0, appel: 0, verification: 0, humain: 0 } }
+    const day = parisDayAt(now, index, 0)
+    return { day, label: index === 0 ? 'Auj.' : WEEKDAY.format(new Date(day)).replace('.', ''), counts: { email: 0, appel: 0, verification: 0, humain: 0 } }
   })
   let waiting = 0
   for (const invoice of invoices) {
@@ -128,19 +138,19 @@ export function boardView(all: readonly Invoice[], settings: Settings, now: numb
     if (action === undefined) continue
     const at = Date.parse(action.at)
     if (at <= now) waiting += 1
-    const index = Math.max(0, Math.floor((at - today.getTime()) / DAY_MS))
+    const index = Math.max(0, parisDayDiff(at, now))
     const slot = agenda[index]
     if (slot !== undefined) slot.counts[action.kind] += 1
   }
   return {
     now,
-    nowLabel: formatLongDay(new Date(now).toISOString()),
+    nowLabel: LONG_DAY.format(new Date(now)),
     offsetDays: settings.clockOffsetDays,
     mode: settings.autopilot,
     kpis: receivablesKpis(invoices, now),
     columns: INVOICE_STAGES.map(status => {
       const own = invoices.filter(invoice => invoice.status === status)
-      return { status, ...STAGE_META[status], count: own.length, totalEur: own.reduce((sum, invoice) => sum + invoice.amountEur, 0) }
+      return { status, ...STAGE_META[status], count: own.length, totalEur: own.reduce((sum, invoice) => sum + boardAmountEur(invoice), 0) }
     }),
     cards,
     feed,

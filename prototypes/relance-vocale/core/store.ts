@@ -207,7 +207,8 @@ class RedisStore implements Store {
   }
 
   async getSettings(): Promise<Settings> {
-    return { ...DEFAULT_SETTINGS, ...((await this.redis.get<Settings>(KEYS.settings)) ?? {}) }
+    const stored = (await this.redis.get<Partial<Settings>>(KEYS.settings)) ?? {}
+    return { ...DEFAULT_SETTINGS, ...stored, agency: { ...DEFAULT_SETTINGS.agency, ...(stored.agency ?? {}) } }
   }
 
   async saveSettings(settings: Settings): Promise<void> {
@@ -227,7 +228,7 @@ class RedisStore implements Store {
 }
 
 // Bump the suffix when the Store interface changes, so `next dev` drops the instance built from older code.
-const STORE_KEY = Symbol.for('relance-vocale.store.v6')
+const STORE_KEY = Symbol.for('relance-vocale.store.v8')
 
 /** Singleton store for the process, kept on globalThis so `next dev` reloads keep the data. */
 export function getStore(): Store {

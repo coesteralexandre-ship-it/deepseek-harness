@@ -1,11 +1,8 @@
 import { AGENT_NAME } from './agent-prompt.ts'
 import type { CollectedField } from './agent-prompt.ts'
-import { CLIENT } from './client.ts'
 import { daysSince, formatDay, formatEur } from './format.ts'
 import { PLAYBOOK } from './receivables.ts'
 import type { Invoice } from './types.ts'
-
-export { CLIENT }
 
 /** Spoken first on a reminder call. The agent speaks in the creditor's name. */
 export const RELANCE_FIRST_MESSAGE = `Bonjour, je suis ${AGENT_NAME}, l’assistante vocale de {{creditor}}. Je suis une intelligence artificielle. J’appelle au sujet de la facture {{invoice_number}} : je suis bien avec {{debtor_contact}} ?`
@@ -60,7 +57,7 @@ export function relanceVariablesFor(invoice: Invoice, now = new Date()): Record<
   const step = PLAYBOOK.find(entry => entry.kind === 'appel' && PLAYBOOK.indexOf(entry) >= invoice.playbookIndex) ?? PLAYBOOK[3]
   return {
     invoice_id: invoice.id,
-    creditor: CLIENT.company,
+    creditor: invoice.creditor.company,
     debtor_company: invoice.debtor.company,
     debtor_contact: invoice.debtor.contactName,
     debtor_role: invoice.debtor.contactRole,

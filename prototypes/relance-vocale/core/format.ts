@@ -1,3 +1,5 @@
+import { BUSINESS_TZ, parisDayDiff } from './clock.ts'
+
 const DAY_MS = 86_400_000
 
 /** "il y a 3 j", "hier", "aujourd’hui". */
@@ -16,7 +18,7 @@ export function relativeDay(iso: string, now = Date.now()): string {
 export function formatDateTime(iso: string): string {
   const time = Date.parse(iso)
   if (Number.isNaN(time)) return iso
-  return new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(time))
+  return new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeStyle: 'short', timeZone: BUSINESS_TZ }).format(new Date(time))
 }
 
 export function formatKeur(value: number): string {
@@ -37,14 +39,14 @@ export function formatEur(value: number, cents = false): string {
 export function formatDay(value: string): string {
   const time = Date.parse(value)
   if (Number.isNaN(time)) return value
-  return new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(time))
+  return new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', timeZone: BUSINESS_TZ }).format(new Date(time))
 }
 
 /** "jeudi 2 octobre" for an ISO date; free text comes back unchanged. */
 export function formatLongDay(value: string): string {
   const time = Date.parse(value)
   if (Number.isNaN(time)) return value
-  return new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(time))
+  return new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: BUSINESS_TZ }).format(new Date(time))
 }
 
 /** Whole days between an ISO due date and `now`; 0 before the due date. */
@@ -56,9 +58,8 @@ export function daysSince(iso: string, now: number): number {
 export function relativeFuture(iso: string, now: number): string {
   const time = Date.parse(iso)
   if (Number.isNaN(time)) return iso
-  const start = new Date(now)
-  start.setHours(0, 0, 0, 0)
-  const days = Math.floor((time - start.getTime()) / DAY_MS)
+  // Calendar days in Paris, whatever the server timezone.
+  const days = parisDayDiff(time, now)
   if (days < 0) return `en retard de ${-days} j`
   if (days === 0) return 'aujourd’hui'
   if (days === 1) return 'demain'

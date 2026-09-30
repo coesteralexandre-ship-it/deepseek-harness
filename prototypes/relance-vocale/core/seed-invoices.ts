@@ -1,5 +1,6 @@
 import { runAutopilot } from './autopilot.ts'
-import { DAY_MS } from './clock.ts'
+import { creditorOf } from './client.ts'
+import { DEFAULT_AGENCY, parisDayAt } from './clock.ts'
 import { logActivity } from './receivables.ts'
 import type { Debtor, Invoice, PayerProfile } from './types.ts'
 
@@ -45,23 +46,21 @@ const LINES: SeedLine[] = [
   { id: 'f-0925', number: 'F-2026-0925', profile: 'renvoi', dueDaysAgo: 12, amountEur: 14_200, mission: '4 frigoristes, juillet et août', debtor: { company: 'Froid Service 69', contactName: 'Laure Masson', contactRole: 'Comptabilité', phone: '+33472000108', email: 'l.masson@froidservice69.example' } },
 ]
 
-/** This morning at 08:00, local time: today's 10:00 actions are still ahead. */
+/** This morning at 08:00, Paris time: today's 10:00 actions are still ahead. */
 function thisMorning(): number {
-  const date = new Date()
-  date.setHours(8, 0, 0, 0)
-  return date.getTime()
+  return Date.parse(parisDayAt(Date.now(), 0, 8))
 }
 
 export function seedInvoices(): Invoice[] {
   const morning = thisMorning()
   return LINES.map(line => {
-    const due = new Date(morning - line.dueDaysAgo * DAY_MS)
-    due.setHours(0, 0, 0, 0)
-    const dueIso = due.toISOString()
+    const dueIso = parisDayAt(morning, -line.dueDaysAgo, 0)
+    const due = Date.parse(dueIso)
     const bare: Invoice = {
       id: line.id,
       token: `facture-${line.id.slice(2)}`,
       number: line.number,
+      creditor: creditorOf(DEFAULT_AGENCY),
       debtor: line.debtor,
       mission: line.mission,
       amountEur: line.amountEur,
@@ -76,10 +75,10 @@ export function seedInvoices(): Invoice[] {
       activities: [],
       updatedAt: dueIso,
     }
-    const opened = logActivity(bare, { kind: 'etape', actor: 'autopilote', title: 'Facture échue, séquence démarrée', detail: 'Importée depuis la balance âgée.' }, due.getTime())
+    const opened = logActivity(bare, { kind: 'etape', actor: 'autopilote', title: 'Facture échue, séquence démarrée', detail: 'Importée depuis la balance âgée.' }, due)
     // Replay one day at a time so every action runs on its own date.
     let replayed = opened
-    for (let day = due.getTime() + DAY_MS; day <= morning; day += DAY_MS) replayed = runAutopilot(replayed, Math.min(day + 10 * 3_600_000, morning), 'demo')
+    for (let day = 1; Date.parse(parisDayAt(due, day, 0)) <= morning; day += 1) replayed = runAutopilot(replayed, Math.min(Date.parse(parisDayAt(due, day, 10)), morning), 'demo')
     return runAutopilot(replayed, morning, 'demo')
   })
 }

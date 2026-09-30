@@ -1,9 +1,8 @@
 import { notFound } from 'next/navigation'
 import { DebtorForm } from '@/components/debtor-form'
 import { AGENT_NAME } from '@/core/agent-prompt'
-import { CLIENT } from '@/core/client'
 import { appNow } from '@/core/clock'
-import { recordVisit } from '@/core/debtor'
+import { promiseDateBounds, recordVisit } from '@/core/debtor'
 import { daysSince, formatDay, formatEur, formatLongDay } from '@/core/format'
 import { openPromise } from '@/core/receivables'
 import { getStore } from '@/core/store'
@@ -21,6 +20,7 @@ export default async function DebtorPage({ params }: { params: Promise<{ token: 
   const invoice = recordVisit(found, now)
   if (invoice !== found) await store.saveInvoice(invoice)
   const promise = openPromise(invoice)
+  const CLIENT = invoice.creditor
   const paid = invoice.status === 'encaissee'
 
   return (
@@ -54,7 +54,7 @@ export default async function DebtorPage({ params }: { params: Promise<{ token: 
 
       {!paid && (
         <div className="animate-rise mt-4" style={{ animationDelay: '160ms' }}>
-          <DebtorForm token={token} creditor={CLIENT.company} promise={promise === undefined || promise.confirmedAt !== undefined ? undefined : { id: promise.id, amount: formatEur(promise.amountEur, true), day: formatLongDay(promise.dueDate) }} />
+          <DebtorForm token={token} creditor={CLIENT.company} dates={promiseDateBounds(now)} promise={promise === undefined || promise.confirmedAt !== undefined ? undefined : { id: promise.id, amount: formatEur(promise.amountEur, true), day: formatLongDay(promise.dueDate) }} />
         </div>
       )}
 

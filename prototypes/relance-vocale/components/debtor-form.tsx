@@ -11,14 +11,18 @@ const OPTIONS: { id: Answer; title: string; hint: string }[] = [
   { id: 'rappel', title: 'Rappelez-moi', hint: 'Donnez le créneau qui vous convient.' },
 ]
 
-function inDays(days: number): string {
-  return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10)
+/** `day` (AAAA-MM-JJ) moved `days` ahead, in UTC like the server's bounds. */
+function dayPlus(day: string, days: number): string {
+  return new Date(Date.parse(`${day}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10)
 }
 
-/** The debtor's one-minute answer: no account, one choice, one field. */
-export function DebtorForm({ token, creditor, promise }: { token: string; creditor: string; promise?: { id: string; amount: string; day: string } }) {
+/**
+ * The debtor's one-minute answer: no account, one choice, one field.
+ * `dates` are the payment days the server accepts, from the workspace clock.
+ */
+export function DebtorForm({ token, creditor, promise, dates }: { token: string; creditor: string; promise?: { id: string; amount: string; day: string }; dates: { min: string; max: string } }) {
   const [answer, setAnswer] = useState<Answer>('promesse')
-  const [date, setDate] = useState(() => inDays(3))
+  const [date, setDate] = useState(() => dayPlus(dates.min, 3))
   const [text, setText] = useState('')
   const [state, setState] = useState<'idle' | 'sending' | 'sent'>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -104,7 +108,7 @@ export function DebtorForm({ token, creditor, promise }: { token: string; credit
         {answer === 'promesse' && (
           <label className="block">
             <span className="label">Date du virement</span>
-            <input id="debtor-date" type="date" required min={inDays(0)} className="field tabular mt-1.5" value={date} onChange={event => setDate(event.target.value)} />
+            <input id="debtor-date" type="date" required min={dates.min} max={dates.max} className="field tabular mt-1.5" value={date} onChange={event => setDate(event.target.value)} />
           </label>
         )}
         {answer === 'litige' && (

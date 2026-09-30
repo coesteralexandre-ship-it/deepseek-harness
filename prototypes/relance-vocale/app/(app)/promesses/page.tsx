@@ -2,7 +2,6 @@ import Link from 'next/link'
 import { PageHead } from '@/components/page-head'
 import { Pill } from '@/components/pill'
 import { AGENT_NAME } from '@/core/agent-prompt'
-import { CLIENT } from '@/core/client'
 import { appNow } from '@/core/clock'
 import { formatDay, formatEur } from '@/core/format'
 import { PROMISE_STATUS_META, payerReliability, weekStart, weeklyForecast } from '@/core/receivables'
@@ -14,6 +13,7 @@ export default async function PromisesPage() {
   const store = getStore()
   const [invoices, settings] = await Promise.all([store.listInvoices(), store.getSettings()])
   const now = appNow(settings)
+  const CLIENT = settings.agency
   const weeks = weeklyForecast(invoices, now)
   const current = weekStart(now)
   const scale = Math.max(CLIENT.weeklyPayrollEur, ...weeks.map(week => week.promisedEur)) * 1.12

@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { ActorBadge, actorLabel } from '@/components/actor-badge'
 import { PageHead } from '@/components/page-head'
-import { appNow } from '@/core/clock'
+import { appNow, parisDate } from '@/core/clock'
 import { formatLongDay } from '@/core/format'
 import { getStore } from '@/core/store'
 import type { Actor } from '@/core/types'
@@ -33,7 +33,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
   const days = new Map<string, typeof rows>()
   for (const row of rows) {
     // Group by local calendar day, not by UTC date.
-    const key = new Date(row.activity.at).toLocaleDateString('sv-SE')
+    const key = parisDate(row.activity.at)
     days.set(key, [...(days.get(key) ?? []), row])
   }
   const count = (actor: Actor) => invoices.flatMap(invoice => invoice.activities).filter(activity => activity.actor === actor && Date.parse(activity.at) <= now).length
@@ -72,7 +72,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
                       <Link href={`/factures/${invoice.id}`} className="font-semibold text-ink-2 hover:text-blue">{invoice.debtor.company}</Link> · {invoice.number} · {actorLabel(activity.actor)}
                     </p>
                   </div>
-                  <span className="tabular pt-0.5 text-[12px] text-faint">{new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(new Date(activity.at))}</span>
+                  <span className="tabular pt-0.5 text-[12px] text-faint">{new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }).format(new Date(activity.at))}</span>
                 </li>
               ))}
             </ol>

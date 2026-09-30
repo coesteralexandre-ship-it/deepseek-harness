@@ -1,8 +1,10 @@
 import { appUrl } from './env.ts'
-import type { Invoice } from './types.ts'
+import type { Agency, Creditor, Invoice } from './types.ts'
 
-/** The client agency whose invoices the demo follows. */
-export const CLIENT = { company: 'Flexo RH', city: 'Lyon', weeklyPayrollEur: 58_000, team: 'Service comptabilité clients' } as const
+/** The part of the agency an invoice carries. */
+export function creditorOf(agency: Agency): Creditor {
+  return { company: agency.company, city: agency.city, team: agency.team }
+}
 
 /** Public page where the debtor answers without an account. */
 export function answerUrl(invoice: Invoice): string {

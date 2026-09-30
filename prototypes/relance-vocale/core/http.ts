@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { CallJournalError } from './calls.ts'
 import { ElevenLabsError } from './elevenlabs.ts'
 
 /** JSON error body every route returns on failure. */
@@ -26,5 +27,6 @@ export async function parseBody<T>(request: Request, schema: z.ZodType<T>): Prom
 /** Map thrown errors to a response, keeping ElevenLabs status codes. */
 export function errorResponse(error: unknown): NextResponse {
   if (error instanceof ElevenLabsError) return jsonError(error.message, error.status === 503 ? 503 : 502)
+  if (error instanceof CallJournalError) return jsonError(error.message, error.status)
   return jsonError(error instanceof Error ? error.message : 'Erreur inconnue', 500)
 }

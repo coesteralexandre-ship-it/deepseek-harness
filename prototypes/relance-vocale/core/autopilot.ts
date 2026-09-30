@@ -28,7 +28,8 @@ export function runDueAction(invoice: Invoice, now: number, mode: Settings['auto
       }
       const attempt = invoice.calls.filter(call => call.status === 'termine').length
       const plan = demoCallOutcome(invoice, attempt)
-      return applyRelanceResult(cleared, simulatedCall(invoice, plan.outcome, now, plan.promiseInDays), now)
+      // A playbook call was consumed by `step`; a dated callback may still consume a playbook call that came due.
+      return applyRelanceResult(cleared, simulatedCall(invoice, plan.outcome, now, plan.promiseInDays), now, action.playbookIndex === undefined)
     }
     case 'verification': {
       const promise = openPromise(invoice)

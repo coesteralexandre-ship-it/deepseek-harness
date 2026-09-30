@@ -1,5 +1,5 @@
 import { AGENT_NAME } from './agent-prompt.ts'
-import { CLIENT, answerUrl } from './client.ts'
+import { answerUrl } from './client.ts'
 import { daysSince, formatDay, formatEur, formatLongDay } from './format.ts'
 import { newId } from './ids.ts'
 import type { EmailDraft, EmailKind, Invoice } from './types.ts'
@@ -23,7 +23,6 @@ function lastCallDate(invoice: Invoice): string | undefined {
   return call === undefined ? undefined : formatLongDay(call.startedAt)
 }
 
-const SIGNATURE = `Bien cordialement,\n${CLIENT.team}\n${CLIENT.company}, ${CLIENT.city}`
 
 /**
  * Subject and body of an email for `invoice`, written from its current state.
@@ -37,6 +36,7 @@ export function composeEmail(invoice: Invoice, kind: EmailKind, now: number): { 
   const link = answerUrl(invoice)
   const promise = [...invoice.promises].reverse().find(entry => entry.status !== 'tenue')
   const called = lastCallDate(invoice)
+  const SIGNATURE = `Bien cordialement,\n${invoice.creditor.team}\n${invoice.creditor.company}, ${invoice.creditor.city}`
   switch (kind) {
     case 'rappel':
       return {

@@ -9,7 +9,7 @@ import { Transcript } from '@/components/transcript'
 import { VoiceConsole } from '@/components/voice-console'
 import { AGENT_NAME } from '@/core/agent-prompt'
 import { ago } from '@/core/board-view'
-import { CLIENT, answerUrl } from '@/core/client'
+import { answerUrl } from '@/core/client'
 import { appNow } from '@/core/clock'
 import { EMAIL_KIND_META } from '@/core/emails'
 import { elevenLabsEnv } from '@/core/env'
@@ -185,7 +185,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
             kind="invoice"
             id={invoice.id}
             title={`Relancer ${invoice.debtor.company}`}
-            roleHint={`Vous jouez ${invoice.debtor.contactName} : ${AGENT_NAME} vous relance au nom de ${CLIENT.company}.`}
+            roleHint={`Vous jouez ${invoice.debtor.contactName} : ${AGENT_NAME} vous relance au nom de ${invoice.creditor.company}.`}
             userName={firstName}
             phone={invoice.debtor.phone}
             browserReady={browserReady}

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { callResultFromPayload, invoiceIdOf, postCallPayload, prospectIdOf, relanceResultFromPayload, verifyWebhookSignature } from '@/core/elevenlabs'
+import { callResultFromPayload, postCallPayload, relanceResultFromPayload, verifyWebhookSignature } from '@/core/elevenlabs'
 import { elevenLabsEnv } from '@/core/env'
 import { jsonError } from '@/core/http'
 import { applyCallResult } from '@/core/outcome'
@@ -9,14 +9,23 @@ import { workspaceNow } from '@/core/workspace'
 
 export const dynamic = 'force-dynamic'
 
+/** An agent id on the payload must match the configured one; either side unset skips the check. */
+function fromAgent(payloadAgentId: string | undefined, expected: string | undefined): boolean {
+  return payloadAgentId === undefined || expected === undefined || payloadAgentId === expected
+}
+
 /**
- * ElevenLabs post-call webhook. Closes the matching call record and moves the
- * prospect, or the invoice of a reminder call, to the state the agent's analysis implies.
+ * ElevenLabs post-call webhook. Closes the call record the server opened for the
+ * conversation and moves its prospect, or the invoice of a reminder call, to the state
+ * the agent's analysis implies. The dynamic variables never pick the target.
  */
 export async function POST(request: Request) {
   const rawBody = await request.text()
-  const { webhookSecret } = elevenLabsEnv()
-  if (webhookSecret !== undefined && !verifyWebhookSignature(rawBody, request.headers.get('elevenlabs-signature'), webhookSecret)) {
+  const { webhookSecret, agentId, relanceAgentId } = elevenLabsEnv()
+  if (webhookSecret === undefined) {
+    // Unsigned deliveries are only accepted in local development.
+    if (process.env.NODE_ENV === 'production') return jsonError('Webhook désactivé : ELEVENLABS_WEBHOOK_SECRET n’est pas configuré.', 503)
+  } else if (!verifyWebhookSignature(rawBody, request.headers.get('elevenlabs-signature'), webhookSecret)) {
     return jsonError('Signature invalide', 401)
   }
 
@@ -34,19 +43,18 @@ export async function POST(request: Request) {
 
   const store = getStore()
   const conversationId = payload.data.conversation_id
-  const invoiceId = invoiceIdOf(payload)
-  if (invoiceId !== undefined) {
-    const invoice = await store.getInvoice(invoiceId)
-    if (invoice === undefined) return NextResponse.json({ ignored: 'facture inconnue', conversationId })
+  const payloadAgentId = payload.data.agent_id
+  const invoice = (await store.listInvoices()).find(candidate => candidate.calls.some(call => call.conversationId === conversationId))
+  if (invoice !== undefined) {
+    if (!fromAgent(payloadAgentId, relanceAgentId)) return NextResponse.json({ ignored: 'agent inattendu', conversationId })
+    if (invoice.status === 'encaissee') return NextResponse.json({ ignored: 'facture déjà encaissée', conversationId })
     const closed = applyRelanceResult(invoice, relanceResultFromPayload(payload), await workspaceNow(store))
     await store.saveInvoice(closed)
     return NextResponse.json({ ok: true, invoiceId: closed.id, status: closed.status, verified: webhookSecret !== undefined })
   }
-  const prospectId = prospectIdOf(payload)
-  const prospect = prospectId !== undefined
-    ? await store.getProspect(prospectId)
-    : (await store.listProspects()).find(candidate => candidate.calls.some(call => call.conversationId === conversationId))
-  if (prospect === undefined) return NextResponse.json({ ignored: 'conversation sans prospect connu', conversationId })
+  const prospect = (await store.listProspects()).find(candidate => candidate.calls.some(call => call.conversationId === conversationId))
+  if (prospect === undefined) return NextResponse.json({ ignored: 'conversation sans appel enregistré', conversationId })
+  if (!fromAgent(payloadAgentId, agentId)) return NextResponse.json({ ignored: 'agent inattendu', conversationId })
 
   const updated = applyCallResult(prospect, callResultFromPayload(payload))
   await store.saveProspect(updated)

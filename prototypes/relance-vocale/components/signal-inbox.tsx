@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, type FormEvent } from 'react'
+import { RadarScan } from '@/components/radar-scan'
 import { SourceChip, WeightDots } from '@/components/source-chip'
 import { relativeDay } from '@/core/format'
 import { SOURCE_META } from '@/core/signals'
@@ -189,7 +190,8 @@ export function SignalInbox({ items, prospects }: { items: SignalItem[]; prospec
       </div>
 
       <aside className="card self-start p-5">
-        <p className="eyebrow">Sources surveillées</p>
+        <RadarScan />
+        <p className="eyebrow mt-6">Sources surveillées</p>
         <p className="mt-3 text-[13px] leading-relaxed text-muted">
           Un signal vaut de 1 à 5 selon qu’il est de première main et explicite. Le score d’un prospect additionne ses signaux, pondérés par leur fraîcheur.
         </p>

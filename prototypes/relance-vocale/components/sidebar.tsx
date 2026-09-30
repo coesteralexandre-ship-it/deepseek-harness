@@ -22,6 +22,8 @@ const GROUPS: { label: string; links: NavLink[] }[] = [
       { href: '/promesses', label: 'Promesses', icon: 'M5 12l4 4L19 7' },
       { href: '/journal', label: 'Journal', icon: 'M5 6h14M5 12h14M5 18h9' },
       { href: '/automatisations', label: 'Automatisations', icon: 'M13 3L5 14h6l-1 7 8-11h-6z' },
+      { href: '/importer', label: 'Importer', icon: 'M12 4v11M7 10l5 5 5-5M5 20h14' },
+      { href: '/rapprochement', label: 'Rapprochement', icon: 'M4 7h13l-3-3M20 17H7l3 3' },
     ],
   },
   {
@@ -32,8 +34,11 @@ const GROUPS: { label: string; links: NavLink[] }[] = [
     ],
   },
   {
-    label: 'Agent',
-    links: [{ href: '/agent', label: AGENT_NAME, icon: 'M12 4v10M8 8v4M16 8v4M6 18h12' }],
+    label: 'Agent et réglages',
+    links: [
+      { href: '/agent', label: AGENT_NAME, icon: 'M12 4v10M8 8v4M16 8v4M6 18h12' },
+      { href: '/reglages', label: 'Réglages', icon: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12h2M3 12h2M12 3v2M12 19v2' },
+    ],
   },
 ]
 

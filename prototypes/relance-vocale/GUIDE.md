@@ -1,22 +1,31 @@
-# Échéance — relance vocale des factures, et sa prospection
+# Échéance, relance vocale des factures et sa prospection
 
-Application Next.js 16 déployée sur Vercel, en deux espaces. **Relance** : le poste clients d'une agence d'intérim, où l'agent vocal ElevenLabs appelle les clients au sujet des factures échues, obtient une date et un montant de règlement, qualifie les litiges, et suit chaque promesse jusqu'au virement. **Prospection** : des signaux d'impayés qualifient des agences, un pipeline les fait avancer, et l'agent les appelle en se présentant comme la démo du produit, avec une lettre imprimable à QR code, une page publique et une note vocale. L'étude de marché et le positionnement sont dans [BRAINSTORM.md](./BRAINSTORM.md).
+Application Next.js 16 déployée sur Vercel, direction artistique Pigment, en deux espaces.
+
+**Relance** : le pipeline d'une agence d'intérim, sept colonnes (À relancer, Email envoyé, Appel, Promesse, Litige, À vous, Encaissé). Chaque facture échue suit une séquence (email J+1, appel de Léa J+3, email J+7, appels J+10 et J+20, humain J+30, rien le week-end) et change de colonne toute seule : une date obtenue, un litige, une réponse du client ou un virement la font avancer. Les factures arrivent par import de la balance âgée ; les virements, par rapprochement du relevé bancaire.
+
+**Prospection** : des signaux d'impayés (dont un radar sur les comptes publics des agences) qualifient des agences, un pipeline les fait avancer, et l'agent les appelle en se présentant comme la démo du produit, avec une lettre imprimable à QR code, une page publique et une note vocale. L'étude de marché et le positionnement sont dans [BRAINSTORM.md](./BRAINSTORM.md).
 
 ## Les écrans
 
 | Page | Rôle |
 |---|---|
-| `/` | Poste clients : encours échu, promis cette semaine, litiges, file d'appels du jour, et pour chaque facture ce que l'agent a appris au téléphone. |
-| `/factures/[id]` | Fiche facture : console vocale (navigateur, téléphone, simulation), promesses, litige, historique des appels avec transcription, lien de la page de réponse du client, décisions (règlement reçu, reprendre la main). |
-| `/promesses` | Registre des promesses : promis, reçu et paie hebdomadaire sur cinq semaines, toutes les promesses, fiabilité de chaque payeur. |
-| `/f/[token]` | Page publique du client relancé, sans compte : donner une date de paiement, signaler un litige, indiquer la bonne personne, demander un rappel. |
-| `/pipeline` | Pipeline de prospection en colonnes ; glisser-déposer pour changer d'étape. |
-| `/signaux` | Boîte de réception des signaux ; qualifier rend l'entreprise appelable. |
-| `/prospects/[id]` | Fiche prospect : console vocale, signaux, angle, appels, et le panneau lettre, note vocale, lemlist, WhatsApp. |
-| `/prospects/[id]/lettre` | Letter builder : lettre A4 avec QR code vers la page publique, éditable, impression ou PDF. |
-| `/l/[token]` | Page publique du prospect : il parle à l'agent dans le navigateur ou écoute la note vocale. Chaque ouverture crée un signal. |
-| `/agent` | Les deux agents (relance, prospection), leurs consignes, et l'état de chaque branchement. |
+| `/` | Pipeline de relance : cockpit (horloge, mode Démo/Réel, +1 jour, Rejouer 14 jours, agenda des 7 jours), indicateurs, tableau à 7 colonnes animé, journal en direct. Glisser une carte la déplace. |
+| `/factures/[id]` | Fiche facture : prochaine action (avec « lancer maintenant »), ce que Léa sait, studio d'emails, promesses, journal, appels avec transcription, console vocale (navigateur, téléphone, simulation), page de réponse du client, décisions. |
+| `/promesses` | Promis, reçu et paie hebdomadaire sur cinq semaines, toutes les promesses, fiabilité de chaque payeur. |
+| `/journal` | Tout ce qui s'est passé, par jour, filtrable par acteur (Léa, Autopilote, Clients, Vous). |
+| `/automatisations` | La séquence, les règles de passage d'une colonne à l'autre, le mode de l'autopilote, les garde-fous. |
+| `/importer` | Import de la balance âgée : collage depuis Excel ou fichier CSV (UTF-8 ou Windows-1252), colonnes reconnues automatiquement et modifiables, aperçu, lignes écartées avec leur motif, doublons ignorés. |
+| `/rapprochement` | Collage du relevé bancaire : chaque crédit est rapproché d'une facture ou d'une promesse (numéro de facture, nom du client, montant) ; les rapprochements sûrs sont cochés, rien ne s'applique sans validation. Un acompte réduit le reste dû. |
+| `/reglages` | L'agence : nom, ville, signature des emails, paie hebdomadaire. Enregistrer met ce nom sur toutes les factures ouvertes. |
+| `/f/[token]` | Page publique du client relancé : date de paiement, litige, bon interlocuteur, rappel, ou confirmation d'une promesse d'un clic. |
+| `/pipeline`, `/signaux`, `/prospects/[id]`, `/prospects/[id]/lettre`, `/l/[token]` | Prospection : pipeline des agences, signaux avec le radar open data, fiche, letter builder, page publique du prospect. |
+| `/agent` | Les deux agents (relance, prospection), leurs consignes, l'état de chaque branchement. |
 | `/connexion` | Saisie du code d'accès quand `APP_ACCESS_CODE` est défini. |
+
+## Radar open data
+
+Sur `/signaux`, « Balayer » interroge l'[API Recherche d'entreprises](https://recherche-entreprises.api.gouv.fr) (agences d'intérim NAF 78.20Z, catégorie PME, siège dans le département) puis les [ratios INPI](https://data.economie.gouv.fr/explore/dataset/ratios_inpi_bce/) (crédit clients en jours) par lots de 40 SIREN. Seuls comptent les comptes des trois derniers exercices et les délais entre 10 et 200 jours. Les agences au-dessus du seuil entrent dans le pipeline avec un signal « Comptes publiés » et un angle d'ouverture chiffré (leur délai contre la médiane de l'échantillon) ; une seule société par réseau de franchise. Gratuit, sans clé ; l'annuaire ne publie pas de téléphone.
 
 Trois façons de passer un appel, depuis la console vocale d'une facture ou d'un prospect :
 
@@ -87,15 +96,15 @@ Rien d'autre : `GET /api/elevenlabs/signed-url` (`?agent=relance` pour l'agent d
 
 Settings → Webhooks → Post-call → URL `https://<votre-app>/api/webhooks/elevenlabs`, événement `post_call_transcription`. Copier le secret affiché dans `ELEVENLABS_WEBHOOK_SECRET` : l'app vérifie la signature HMAC (`ElevenLabs-Signature: t=…,v0=…`, tolérance 30 minutes). Le webhook :
 
-- retrouve la facture par la variable dynamique `invoice_id`, ou le prospect par `prospect_id` (ou par l'identifiant de conversation d'un appel ouvert) ;
+- retrouve la facture ou le prospect par l'identifiant de conversation d'un appel que l'app a elle-même ouvert (les variables dynamiques seules ne suffisent pas : le navigateur les contrôle) ;
 - pour une relance, lit `relance_outcome`, `promise_date`, `promise_amount`, `dispute_reason`, `right_contact` ; pour un prospect, `outcome` (`rdv`, `rappel`, `refus`) ou, à défaut, le critère `booked_meeting` ;
 - enregistre résumé, créneau, transcription, et déplace la carte.
 
-Sans secret configuré, le webhook est accepté sans vérification (mode démo). Il est facultatif tant qu'une page reste ouverte : la console vocale relit la même analyse par `GET /v1/convai/conversations/{id}`.
+En production, sans secret configuré, le webhook répond 503. En développement, il est accepté sans vérification. Il est facultatif tant qu'une page reste ouverte : la console vocale relit la même analyse par `GET /v1/convai/conversations/{id}`.
 
 ### 5. Outil serveur « prise de rendez-vous » (optionnel)
 
-Pour que l'agent enregistre le RDV pendant un appel téléphonique : Agent → Tools → Webhook, `POST https://<votre-app>/api/tools/book-meeting`, en-tête `x-tool-secret: <TOOL_SECRET>`, paramètres `prospect_id` (valeur : variable dynamique `prospect_id`), `slot` et `notes` (remplis par le modèle). Sans cet outil, le créneau arrive quand même par la collecte de données à la fin de l'appel.
+Pour que l'agent enregistre le RDV pendant un appel téléphonique : Agent → Tools → Webhook, `POST https://<votre-app>/api/tools/book-meeting`, en-tête `x-tool-secret: <TOOL_SECRET>`, paramètres `conversation_id` (valeur : variable système `system__conversation_id`, qui désigne l'appel ouvert par l'app), `prospect_id` (variable dynamique `prospect_id`), `slot` et `notes` (remplis par le modèle). En production, `TOOL_SECRET` est obligatoire. Sans cet outil, le créneau arrive quand même par la collecte de données à la fin de l'appel.
 
 ## API
 
@@ -121,7 +130,14 @@ Pour que l'agent enregistre le RDV pendant un appel téléphonique : Agent → T
 | `POST /api/invoices/[id]/calls` | Journal des appels de relance : `{ action: 'open' \| 'close' \| 'analyze', … }` |
 | `POST /api/invoices/[id]/simulate` | Relance simulée, `{ outcome?: 'promesse' \| 'litige' \| 'renvoi' }` |
 | `PATCH /api/invoices/[id]` | Décision : `{ action: 'paid' \| 'takeover' \| 'resume' }` ou `{ action: 'promise', promiseId, status }` |
-| `POST /api/f/[token]` | Réponse du client relancé : `{ answer: 'promesse', date }`, `'litige'`, `'contact'` ou `'rappel'` |
+| `POST /api/f/[token]` | Réponse du client relancé : `{ answer: 'promesse', date }`, `'confirmer'`, `'litige'`, `'contact'` ou `'rappel'` |
+| `GET/POST /api/autopilot` | Vue du tableau ; `{ action: 'advance', days }` avance l'horloge et fait agir l'autopilote, `{ action: 'mode', autopilot }` |
+| `GET /api/cron/autopilot` | Tâche du matin, `Authorization: Bearer <CRON_SECRET>` |
+| `POST /api/invoices/[id]/emails`, `PATCH` | Préparer un brouillon `{ kind }` ; enregistrer, réécrire, supprimer ou marquer envoyé |
+| `POST /api/invoices/import` | Import de lignes déjà lues `{ rows }` |
+| `POST /api/reconcile` | `{ action: 'analyze', text }` puis `{ action: 'apply', items }` |
+| `POST /api/radar` | `{ departement, minDsoDays, maxCompanies }` |
+| `GET/PATCH /api/settings` | Réglages de l'agence |
 | `GET /api/l/[token]/signed-url` | URL signée pour la page publique, jeton connu exigé |
 | `GET /api/elevenlabs/signed-url` | URL signée pour le navigateur ; `?agent=relance` pour l'agent de relance |
 | `POST/DELETE /api/auth` | Échange le code d'accès contre le cookie ; déconnexion |
@@ -150,7 +166,7 @@ Le dossier n'appartient pas au workspace pnpm du dépôt : lint, typecheck et te
 ## Limites connues
 
 - Un code d'accès partagé, pas de comptes ni de multi-tenant : une seule agence cliente (Flexo RH, jeu de test). Les routes publiques `/l/*` et `/f/*` ne sont protégées que par leur jeton.
-- Les factures viennent du jeu de test : l'import (CSV, Pennylane) et le rapprochement bancaire des promesses restent à construire ; une promesse se marque tenue ou rompue à la main.
+- Import et rapprochement passent par un collage ou un fichier CSV : pas encore de connexion directe à Pennylane, Sage ou à la banque (voir BRAINSTORM, section outillage : API Pennylane puis Chift).
 - Le mode mémoire perd les données à chaque redémarrage ; sur Vercel, ajoutez Upstash avant d'utiliser le webhook, le QR code ou les URL audio publiques.
 - lemlist et WhatsApp : les appels API suivent leur documentation actuelle mais n'ont pas été exercés avec de vrais comptes dans ce dépôt ; l'erreur renvoyée par l'API est affichée telle quelle dans le panneau.
 - Les appels à froid par IA sont encadrés : information sur la nature IA dès le premier message (déjà dans le prompt, la lettre et la note vocale), respect de l'opposition, horaires B2B, conservation limitée des transcriptions. Voir la section conformité de [BRAINSTORM.md](./BRAINSTORM.md).

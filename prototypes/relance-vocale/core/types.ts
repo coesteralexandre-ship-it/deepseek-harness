@@ -63,6 +63,8 @@ export interface Contact {
 /** A staffing agency in the pipeline. */
 export interface Prospect {
   id: string
+  /** Set for prospects found by the open-data radar; used to skip companies already in the pipeline. */
+  siren?: string
   company: string
   city: string
   /** Free-text size line shown on cards. */
@@ -165,6 +167,20 @@ export interface Activity {
   detail?: string
 }
 
+/** The agency that issued the invoice and in whose name the agent speaks. */
+export interface Creditor {
+  company: string
+  city: string
+  /** Signature of the emails, e.g. « Service comptabilité clients ». */
+  team: string
+}
+
+/** The client agency using the workspace. */
+export interface Agency extends Creditor {
+  /** Payroll paid every Friday: the line the promises are measured against. */
+  weeklyPayrollEur: number
+}
+
 /** The client's customer who owes the invoice. */
 export interface Debtor {
   company: string
@@ -181,12 +197,15 @@ export interface Invoice {
   /** Opaque token of the debtor's public answer page. */
   token: string
   number: string
+  creditor: Creditor
   debtor: Debtor
   /** What was billed, in the agency's words. */
   mission: string
   amountEur: number
   /** ISO timestamp the invoice fell due. */
   dueDate: string
+  /** Start of the reminder sequence when it is not the due date (an invoice imported already late starts the day before import). */
+  sequenceAnchor?: string
   status: InvoiceStatus
   /** Index in the reminder playbook of the next step to run. */
   playbookIndex: number
@@ -201,6 +220,8 @@ export interface Invoice {
   /** A dated follow-up that overrides the playbook (callback requested, broken promise). */
   followUpAt?: string
   paidAt?: string
+  /** Fingerprints of the bank credits already applied to this invoice, so a statement pasted twice is not counted twice. */
+  reconciledCredits?: string[]
   updatedAt: string
 }
 
@@ -210,6 +231,7 @@ export interface Settings {
   clockOffsetDays: number
   /** `demo` runs every step itself; `reel` prepares emails and calls for a person to approve. */
   autopilot: 'demo' | 'reel'
+  agency: Agency
 }
 
 export type AudioFormat = 'mp3' | 'ogg'
