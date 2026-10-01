@@ -31,7 +31,8 @@ export async function POST(request: Request, { params }: Context) {
   if (invoice === undefined) return jsonError('Facture introuvable', 404)
   try {
     const response = await startOutboundCall({
-      agentId: env.relanceAgentId,
+      // The phone agent has no client tool: no browser answers one during a phone call.
+      agentId: env.relancePhoneAgentId ?? env.relanceAgentId,
       phoneNumberId: env.phoneNumberId,
       toNumber: parsed.data.toNumber ?? invoice.debtor.phone,
       dynamicVariables: relanceVariablesFor(invoice, new Date(await workspaceNow(store))),

@@ -181,23 +181,38 @@ function asText(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
 }
 
+/** A reminder result from the data-collection fields of the agent's analysis, keyed by field id. */
+export function relanceResultFromCollected(conversationId: string, collected: Record<string, string>, summary: string | undefined, transcript: TranscriptTurn[]): RelanceResult {
+  return {
+    conversationId,
+    outcome: parseRelanceOutcome(collected.relance_outcome),
+    summary: collected.resume ?? summary,
+    promiseDate: collected.promise_date,
+    promiseAmountEur: parseAmount(collected.promise_amount),
+    secondDate: collected.second_payment_date,
+    secondAmountEur: parseAmount(collected.second_payment_amount),
+    disputeReason: collected.dispute_reason,
+    missingDocument: collected.missing_document,
+    rightContact: collected.right_contact,
+    quote: collected.debtor_quote,
+    delayReason: collected.delay_reason,
+    callbackAt: collected.callback_time,
+    transcript: transcript.length > 0 ? transcript : undefined,
+  }
+}
+
 /** Translate the webhook analysis of a reminder call into an invoice update. */
 export function relanceResultFromPayload(payload: PostCallPayload): RelanceResult {
   const analysis = payload.data.analysis ?? undefined
-  const fields = analysis?.data_collection_results ?? {}
+  const collected: Record<string, string> = {}
+  for (const [id, field] of Object.entries(analysis?.data_collection_results ?? {})) {
+    const value = typeof field.value === 'number' ? String(field.value) : asText(field.value)
+    if (value !== undefined) collected[id] = value
+  }
   const transcript: TranscriptTurn[] = (payload.data.transcript ?? [])
     .filter(turn => typeof turn.message === 'string' && turn.message.trim() !== '')
     .map(turn => ({ role: turn.role === 'agent' ? 'agent' : 'user', text: turn.message as string }))
-  return {
-    conversationId: payload.data.conversation_id,
-    outcome: parseRelanceOutcome(fields.relance_outcome?.value),
-    summary: asText(fields.resume?.value) ?? analysis?.transcript_summary,
-    promiseDate: asText(fields.promise_date?.value),
-    promiseAmountEur: parseAmount(fields.promise_amount?.value),
-    disputeReason: asText(fields.dispute_reason?.value),
-    rightContact: asText(fields.right_contact?.value),
-    transcript: transcript.length > 0 ? transcript : undefined,
-  }
+  return relanceResultFromCollected(payload.data.conversation_id, collected, analysis?.transcript_summary, transcript)
 }
 
 /** Translate the webhook analysis into a pipeline result. */

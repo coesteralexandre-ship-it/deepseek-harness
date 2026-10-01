@@ -1,11 +1,12 @@
 'use client'
 
-import { ConversationProvider, useConversation } from '@elevenlabs/react'
+import { ConversationProvider, useConversation, useConversationClientTool } from '@elevenlabs/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { AGENT_NAME } from '@/core/agent-prompt'
+import { ANSWER_TOOL_NAME } from '@/core/answer'
 import { formatPhone } from '@/core/format'
-import type { TranscriptTurn } from '@/core/types'
+import type { DebtorAnswer, TranscriptTurn } from '@/core/types'
 
 /** What the console drives: a prospecting call to an agency, or a reminder call about an invoice. */
 type Kind = 'prospect' | 'invoice'
@@ -26,6 +27,10 @@ interface Props {
   dynamicVariables: Record<string, string>
   /** Invoice amount, prefilled when a promise is qualified by hand. */
   defaultAmountEur?: number
+  /** Called whenever the call changed the record (answer noted, call closed), for a board that shows it live. */
+  onChange?: () => void
+  /** Told when a call starts or ends, so a side panel does not close in the middle of one. */
+  onBusyChange?: (busy: boolean) => void
 }
 
 export function VoiceConsole(props: Props) {
@@ -54,6 +59,7 @@ const OUTCOMES: Record<Kind, { value: string; label: string }[]> = {
   ],
   invoice: [
     { value: 'promesse', label: 'Promesse' },
+    { value: 'deja_regle', label: 'Déjà réglé' },
     { value: 'litige', label: 'Litige' },
     { value: 'renvoi', label: 'À renvoyer' },
     { value: 'rappel', label: 'Rappel' },
@@ -69,14 +75,21 @@ const SIMULATIONS: Record<Kind, { value: string; label: string }[]> = {
   ],
   invoice: [
     { value: 'promesse', label: 'Promesse de règlement' },
+    { value: 'deja_regle', label: 'Déjà réglé' },
     { value: 'litige', label: 'Litige' },
     { value: 'renvoi', label: 'Facture non reçue' },
     { value: 'sans_suite', label: 'Répondeur' },
   ],
 }
 
-async function postJson(url: string, body: unknown): Promise<{ ok: boolean; error?: string; data?: unknown }> {
-  const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+/** POST JSON; a network failure comes back as `ok: false` like an HTTP error, never as a rejection. */
+async function postJson(url: string, body: unknown, keepalive = false): Promise<{ ok: boolean; error?: string; data?: unknown }> {
+  let response: Response
+  try {
+    response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), keepalive })
+  } catch {
+    return { ok: false, error: 'Réseau indisponible : la requête n’est pas partie.' }
+  }
   const data: unknown = await response.json().catch(() => undefined)
   if (response.ok) return { ok: true, data }
   const error = typeof data === 'object' && data !== null && 'error' in data && typeof data.error === 'string' ? data.error : `Erreur ${response.status}`
@@ -87,12 +100,44 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+/** Column change a closed call caused, as the server reports it. */
+interface Move {
+  from: string
+  to: string
+  knows: string
+}
+
+const ANSWER_LABEL: Record<DebtorAnswer['outcome'], string> = {
+  promesse: 'Promesse',
+  deja_regle: 'Déjà réglé',
+  litige: 'Litige',
+  renvoi: 'À renvoyer',
+  rappel: 'Rappel',
+  sans_suite: 'Sans suite',
+}
+
+const ANSWER_TONE: Record<DebtorAnswer['outcome'], string> = {
+  promesse: 'pill-ok',
+  deja_regle: 'pill-turquoise',
+  litige: 'pill-hot',
+  renvoi: 'pill-neutral',
+  rappel: 'pill-warn',
+  sans_suite: 'pill-mute',
+}
+
 function inDays(days: number): string {
   return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10)
 }
 
-function Console({ kind, id, title, roleHint, userName, phone, browserReady, phoneReady, dynamicVariables, defaultAmountEur }: Props) {
+function Console({ kind, id, title, roleHint, userName, phone, browserReady, phoneReady, dynamicVariables, defaultAmountEur, onChange, onBusyChange }: Props) {
   const router = useRouter()
+  const changed = useRef(onChange)
+  changed.current = onChange
+  /** Tell the board when there is one (it pulls its own view, with the card animation); re-render the server page otherwise. */
+  const refresh = () => {
+    if (changed.current !== undefined) changed.current()
+    else router.refresh()
+  }
   const base = kind === 'invoice' ? `/api/invoices/${id}` : `/api/prospects/${id}`
   const [mode, setMode] = useState<Mode>('navigateur')
   const [phase, setPhase] = useState<Phase>('idle')
@@ -103,6 +148,15 @@ function Console({ kind, id, title, roleHint, userName, phone, browserReady, pho
   const [watching, setWatching] = useState(false)
   const [promiseDate, setPromiseDate] = useState(() => inDays(4))
   const [promiseAmount, setPromiseAmount] = useState(defaultAmountEur !== undefined ? String(defaultAmountEur) : '')
+  /** Answer Léa noted live through her tool, with its one-line wording; `noting` while the note is being saved. */
+  const [captured, setCaptured] = useState<{ answer: DebtorAnswer; line: string } | null>(null)
+  const [noting, setNoting] = useState(false)
+  const [moved, setMoved] = useState<Move | null>(null)
+  const liveRef = useRef<DebtorAnswer | null>(null)
+  /** The note request in flight, awaited before a hang-up decides how to close the call. */
+  const notePending = useRef<Promise<unknown> | null>(null)
+  /** Resolves once the server opened the call record, so a tool call right after connect finds it. */
+  const opening = useRef<Promise<void> | null>(null)
   const callId = useRef<string | undefined>(undefined)
   const conversationId = useRef<string | undefined>(undefined)
   const turnsRef = useRef<TranscriptTurn[]>([])
@@ -115,28 +169,50 @@ function Console({ kind, id, title, roleHint, userName, phone, browserReady, pho
     alive.current = true
     return () => {
       alive.current = false
+      // Unmounted in the middle of a call (panel closed, page left): close the record anyway so nothing stays « en cours ».
+      const ended = conversationId.current
+      if (ended === undefined) return
+      const body = liveRef.current !== null
+        ? { action: 'close', callId: callId.current, conversationId: ended, transcript: turnsRef.current }
+        : { action: 'analyze', callId: callId.current, conversationId: ended }
+      void postJson(`${base}/calls`, body, true)
     }
+    // `base` is fixed for the life of the console (the panel remounts it per invoice).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  /** Ask the server to read the agent's analysis back; true once the call record is closed with it. */
-  async function analyze(conversation: string, call: string | undefined, tries: number, delayMs: number): Promise<boolean> {
+  /**
+   * Ask the server to read the agent's analysis back; true once the call record is closed with it.
+   * `report` shows the column change; a background read after a live close stays silent.
+   */
+  async function analyze(conversation: string, call: string | undefined, tries: number, delayMs: number, report = true): Promise<boolean> {
     for (let attempt = 0; attempt < tries; attempt += 1) {
       await sleep(delayMs)
       if (!alive.current) return false
       const result = await postJson(`${base}/calls`, { action: 'analyze', conversationId: conversation, callId: call })
       if (!result.ok) return false
-      if ((result.data as { pending?: boolean } | undefined)?.pending !== true) return true
+      const data = result.data as { pending?: boolean; move?: Move } | undefined
+      if (data?.pending !== true) {
+        if (report && data?.move !== undefined) setMoved(data.move)
+        return true
+      }
     }
     return false
   }
 
   const conversation = useConversation({
-    onConnect: async ({ conversationId: started }) => {
+    onConnect: ({ conversationId: started }) => {
       conversationId.current = started
       setPhase('live')
-      const opened = await postJson(`${base}/calls`, { action: 'open', mode: 'navigateur', conversationId: started })
-      callId.current = (opened.data as { call?: { id: string } } | undefined)?.call?.id
-      router.refresh()
+      opening.current = (async () => {
+        const opened = await postJson(`${base}/calls`, { action: 'open', mode: 'navigateur', conversationId: started })
+        if (!opened.ok) {
+          setNotice({ tone: 'error', text: `L’appel n’a pas pu être enregistré : ${opened.error ?? 'erreur'}. La fiche sera mise à jour à la fin, par l’analyse.` })
+          return
+        }
+        callId.current = (opened.data as { call?: { id: string } } | undefined)?.call?.id
+        refresh()
+      })()
     },
     onMessage: ({ message, role }) => {
       if (message.trim() === '') return
@@ -150,6 +226,13 @@ function Console({ kind, id, title, roleHint, userName, phone, browserReady, pho
         setPhase('idle')
         return
       }
+      await opening.current
+      // A note Léa was still saving when the line dropped counts.
+      await notePending.current
+      if (liveRef.current !== null) {
+        await closeWithLiveAnswer()
+        return
+      }
       setPhase('analyzing')
       const analyzed = await analyze(ended, callId.current, 8, 2500)
       if (!alive.current) return
@@ -158,13 +241,72 @@ function Console({ kind, id, title, roleHint, userName, phone, browserReady, pho
         conversationId.current = undefined
         setPhase('idle')
         setNotice({ tone: 'ok', text: `${AGENT_NAME} a analysé l’appel : la fiche est à jour.` })
-        router.refresh()
+        refresh()
       } else {
         setPhase('qualify')
       }
     },
     onError: message => setNotice({ tone: 'error', text: message }),
   })
+
+  /**
+   * Close the call with the answer Léa noted: it decides the column now, the analysis adds the summary later.
+   * On failure the ids stay, and the qualify panel offers to retry.
+   */
+  async function closeWithLiveAnswer() {
+    const ended = conversationId.current
+    setPhase('saving')
+    const closed = await postJson(`${base}/calls`, { action: 'close', callId: callId.current, conversationId: ended, transcript: turnsRef.current })
+    if (!alive.current) return
+    if (!closed.ok) {
+      setNotice({ tone: 'error', text: `La réponse de ${AGENT_NAME} n’a pas pu être enregistrée : ${closed.error ?? 'erreur'}. Réessayez ou choisissez l’issue.` })
+      setPhase('qualify')
+      return
+    }
+    const call = callId.current
+    callId.current = undefined
+    conversationId.current = undefined
+    setPhase('idle')
+    setMoved((closed.data as { move?: Move } | undefined)?.move ?? null)
+    refresh()
+    if (ended !== undefined) {
+      void analyze(ended, call, 8, 4000, false).then(done => {
+        if (done && alive.current) refresh()
+      })
+    }
+  }
+
+  // Léa's `noter_reponse` tool: the debtor's answer lands in the invoice while the call goes on.
+  useConversationClientTool(ANSWER_TOOL_NAME, async (parameters: Record<string, unknown>) => {
+    if (kind !== 'invoice') return 'Outil indisponible pendant cet appel.'
+    setNoting(true)
+    const task = (async () => {
+      await opening.current
+      const noted = await postJson(`${base}/calls`, { action: 'note', callId: callId.current, conversationId: conversationId.current, answer: parameters })
+      if (!noted.ok) return `Impossible de noter la réponse : ${noted.error ?? 'erreur'}. Continue l’appel normalement.`
+      const data = noted.data as { answer: DebtorAnswer; line: string; message: string }
+      liveRef.current = data.answer
+      if (alive.current) setCaptured({ answer: data.answer, line: data.line })
+      refresh()
+      return data.message
+    })()
+    notePending.current = task
+    try {
+      return await task
+    } finally {
+      if (notePending.current === task) notePending.current = null
+      if (alive.current) setNoting(false)
+    }
+  })
+
+  // A side panel must not close while a call is starting, live or being saved.
+  // « qualify » counts: the call record stays open until someone gives its outcome.
+  const busyNow = phase === 'starting' || phase === 'live' || phase === 'saving' || phase === 'analyzing' || phase === 'qualify' || watching || busy === 'phone'
+  const reportBusy = useRef(onBusyChange)
+  reportBusy.current = onBusyChange
+  useEffect(() => {
+    reportBusy.current?.(busyNow)
+  }, [busyNow])
 
   useEffect(() => {
     transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight })
@@ -183,6 +325,10 @@ function Console({ kind, id, title, roleHint, userName, phone, browserReady, pho
     setNotice(null)
     turnsRef.current = []
     setTurns([])
+    liveRef.current = null
+    setCaptured(null)
+    setMoved(null)
+    opening.current = null
     setPhase('starting')
     // An unanswered microphone prompt never settles: stop waiting after 25 seconds.
     const giveUp = setTimeout(() => {
@@ -230,10 +376,11 @@ function Console({ kind, id, title, roleHint, userName, phone, browserReady, pho
       ...(kind === 'invoice' && outcome === 'promesse' ? { promiseDate, promiseAmountEur: Number.isFinite(amount) && amount > 0 ? amount : undefined } : {}),
     })
     if (!result.ok) setNotice({ tone: 'error', text: result.error ?? 'Enregistrement impossible' })
+    else setMoved((result.data as { move?: Move } | undefined)?.move ?? null)
     callId.current = undefined
     conversationId.current = undefined
     setPhase('idle')
-    router.refresh()
+    refresh()
   }
 
   async function startPhoneCall() {
@@ -247,7 +394,7 @@ function Console({ kind, id, title, roleHint, userName, phone, browserReady, pho
       }
       const call = (result.data as { call?: { id: string; conversationId?: string } } | undefined)?.call
       setNotice({ tone: 'info', text: `${AGENT_NAME} appelle le ${formatPhone(toNumber)}. L’issue s’affiche ici à la fin de l’appel.` })
-      router.refresh()
+      refresh()
       if (call?.conversationId !== undefined) {
         setWatching(true)
         const analyzed = await analyze(call.conversationId, call.id, 40, 6000)
@@ -256,7 +403,7 @@ function Console({ kind, id, title, roleHint, userName, phone, browserReady, pho
         setNotice(analyzed
           ? { tone: 'ok', text: `Appel terminé et analysé par ${AGENT_NAME} : la fiche est à jour.` }
           : { tone: 'info', text: 'L’appel n’est pas encore analysé ; l’issue arrivera par le webhook post-appel.' })
-        router.refresh()
+        refresh()
       }
     } finally {
       setBusy(null)
@@ -267,9 +414,13 @@ function Console({ kind, id, title, roleHint, userName, phone, browserReady, pho
     setBusy(`sim-${outcome}`)
     setNotice(null)
     try {
+      setMoved(null)
       const result = await postJson(`${base}/simulate`, { outcome })
       if (!result.ok) setNotice({ tone: 'error', text: result.error ?? 'Simulation impossible' })
-      else router.refresh()
+      else {
+        setMoved((result.data as { move?: Move } | undefined)?.move ?? null)
+        refresh()
+      }
     } finally {
       setBusy(null)
     }
@@ -355,10 +506,40 @@ function Console({ kind, id, title, roleHint, userName, phone, browserReady, pho
             </div>
           )}
 
-          {(phase === 'qualify' || phase === 'saving') && (
+          {kind === 'invoice' && (live || noting || captured !== null) && (
+            <div className={`mt-4 rounded-lg border p-3 transition-colors ${captured !== null ? 'border-blue/40 bg-blue-mist' : 'border-dashed border-line-2 bg-card'}`} aria-live="polite">
+              <div className="flex items-center justify-between gap-2">
+                <span className="label">Fiche en direct</span>
+                {noting
+                  ? <span className="pill pill-action"><span className="animate-blink">{AGENT_NAME} note…</span></span>
+                  : captured !== null
+                    ? <span className={`pill ${ANSWER_TONE[captured.answer.outcome]}`}>{ANSWER_LABEL[captured.answer.outcome]}</span>
+                    : <span className="text-[11.5px] text-faint">En attente de la réponse</span>}
+              </div>
+              {captured !== null
+                ? (
+                  <div key={captured.answer.notedAt} className="animate-rise">
+                    <p className="font-display mt-2 text-[17px] leading-snug text-ink">{captured.line}</p>
+                    {captured.answer.quote !== undefined && <p className="mt-1.5 text-[13px] italic leading-relaxed text-ink-2">« {captured.answer.quote} »</p>}
+                    <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12.5px]">
+                      {captured.answer.delayReason !== undefined && <><dt className="text-muted">Cause du retard</dt><dd className="text-ink-2">{captured.answer.delayReason}</dd></>}
+                      {captured.answer.missingDocument !== undefined && <><dt className="text-muted">Pièce attendue</dt><dd className="text-ink-2">{captured.answer.missingDocument}</dd></>}
+                      {captured.answer.rightContact !== undefined && <><dt className="text-muted">Bon interlocuteur</dt><dd className="text-ink-2">{captured.answer.rightContact}</dd></>}
+                    </dl>
+                    <p className="mt-2 text-[11.5px] text-muted">{live ? 'La carte change de colonne dès que vous raccrochez.' : 'Enregistré dans le CRM.'}</p>
+                  </div>
+                )
+                : <p className="mt-2 text-[12.5px] leading-relaxed text-muted">Dites par exemple « le virement part demain », « elle est déjà payée » ou « le relevé d’heures n’est pas signé » : {AGENT_NAME} le note dans la fiche pendant l’appel.</p>}
+            </div>
+          )}
+
+          {(phase === 'qualify' || (phase === 'saving' && captured === null)) && (
             <div className="mt-4 rounded-lg border border-ochre/40 bg-ochre/5 p-3">
               <p className="label text-ochre">Issue de l’appel</p>
-              <p className="mt-1 text-[12.5px] leading-relaxed text-muted">L’analyse automatique n’est pas revenue. Choisissez l’issue :</p>
+              {captured !== null && phase === 'qualify' && (
+                <button type="button" className="btn btn-sm btn-primary mt-2" onClick={() => void closeWithLiveAnswer()}>Enregistrer la réponse de {AGENT_NAME} : {captured.line}</button>
+              )}
+              <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{captured !== null ? 'Ou choisissez l’issue vous-même :' : 'L’analyse automatique n’est pas revenue. Choisissez l’issue :'}</p>
               {kind === 'invoice' && (
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <label>
@@ -406,6 +587,18 @@ function Console({ kind, id, title, roleHint, userName, phone, browserReady, pho
             ))}
           </div>
         </section>
+      )}
+
+      {moved !== null && (
+        <div className="mt-4 animate-rise rounded-lg border border-emerald/30 bg-emerald/10 px-3 py-2.5" aria-live="polite">
+          <p className="label text-emerald">CRM mis à jour</p>
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-[13.5px] font-semibold text-ink">
+            <span>{moved.from}</span>
+            <svg viewBox="0 0 24 24" className="h-4 w-4 text-emerald" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+            <span>{moved.to}</span>
+          </p>
+          <p className="mt-0.5 text-[12.5px] leading-snug text-ink-2">{moved.knows}</p>
+        </div>
       )}
 
       {notice !== null && (

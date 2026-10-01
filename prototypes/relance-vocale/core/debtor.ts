@@ -2,7 +2,8 @@ import { DAY_MS, parisDayAt } from './clock.ts'
 import { formatDay, formatEur } from './format.ts'
 import { newId } from './ids.ts'
 import { addDraft, logActivity } from './receivables.ts'
-import type { Invoice } from './types.ts'
+import { resolveSpokenCallback } from './spoken-date.ts'
+import type { DebtorAnswer as RecordedAnswer, Invoice } from './types.ts'
 
 export type DebtorAnswer =
   | { answer: 'promesse'; date: string }
@@ -51,6 +52,31 @@ export function recordVisit(invoice: Invoice, now: number): Invoice {
  * The caller validates a promise date with `promiseDateError` first.
  */
 export function applyDebtorAnswer(invoice: Invoice, answer: DebtorAnswer, now: number): Invoice {
+  const applied = applyPageAnswer(invoice, answer, now)
+  const recorded = recordedAnswer(answer, now)
+  return recorded === undefined ? applied : { ...applied, answer: recorded }
+}
+
+/** The page answer as the CRM's « Réponse du client »; a confirmation of an existing promise adds none. */
+function recordedAnswer(answer: DebtorAnswer, now: number): RecordedAnswer | undefined {
+  const base = { notedAt: new Date(now).toISOString(), source: 'page' as const }
+  switch (answer.answer) {
+    case 'promesse':
+      return { ...base, outcome: 'promesse', promiseDate: answer.date }
+    case 'litige':
+      return { ...base, outcome: 'litige', disputeReason: answer.reason, quote: answer.reason }
+    case 'contact':
+      return { ...base, outcome: 'renvoi', rightContact: answer.contact }
+    case 'rappel': {
+      const at = resolveSpokenCallback(answer.when, now)
+      return { ...base, outcome: 'rappel', quote: answer.when, ...(at !== undefined ? { callbackAt: at } : {}) }
+    }
+    default:
+      return undefined
+  }
+}
+
+function applyPageAnswer(invoice: Invoice, answer: DebtorAnswer, now: number): Invoice {
   const iso = new Date(now).toISOString()
   const held = heldByTeam(invoice)
   switch (answer.answer) {
@@ -80,8 +106,9 @@ export function applyDebtorAnswer(invoice: Invoice, answer: DebtorAnswer, now: n
     }
     default: {
       if (held) return logActivity(invoice, { kind: 'client', actor: 'client', title: 'Rappel demandé en ligne', detail: `${answer.when} · ${KEPT_BY_TEAM}` }, now)
-      const tomorrow = new Date(parisDayAt(now, 1, 10))
-      return logActivity({ ...invoice, status: 'appel', followUpAt: tomorrow.toISOString(), knows: `Rappel demandé : ${answer.when}` }, { kind: 'client', actor: 'client', title: 'Rappel demandé en ligne', detail: answer.when }, now)
+      // « demain 14 h » becomes that time; words the parser cannot read mean tomorrow 10:00.
+      const at = resolveSpokenCallback(answer.when, now) ?? parisDayAt(now, 1, 10)
+      return logActivity({ ...invoice, status: 'appel', followUpAt: at, knows: `Rappel demandé : ${answer.when}` }, { kind: 'client', actor: 'client', title: 'Rappel demandé en ligne', detail: answer.when }, now)
     }
   }
 }

@@ -3,7 +3,7 @@ import { callResultFromPayload, postCallPayload, relanceResultFromPayload, verif
 import { elevenLabsEnv } from '@/core/env'
 import { jsonError } from '@/core/http'
 import { applyCallResult } from '@/core/outcome'
-import { applyRelanceResult } from '@/core/receivables'
+import { applyRelanceResult, preferLiveAnswer } from '@/core/receivables'
 import { getStore } from '@/core/store'
 import { workspaceNow } from '@/core/workspace'
 
@@ -21,7 +21,7 @@ function fromAgent(payloadAgentId: string | undefined, expected: string | undefi
  */
 export async function POST(request: Request) {
   const rawBody = await request.text()
-  const { webhookSecret, agentId, relanceAgentId } = elevenLabsEnv()
+  const { webhookSecret, agentId, relanceAgentId, relancePhoneAgentId } = elevenLabsEnv()
   if (webhookSecret === undefined) {
     // Unsigned deliveries are only accepted in local development.
     if (process.env.NODE_ENV === 'production') return jsonError('Webhook désactivé : ELEVENLABS_WEBHOOK_SECRET n’est pas configuré.', 503)
@@ -46,9 +46,9 @@ export async function POST(request: Request) {
   const payloadAgentId = payload.data.agent_id
   const invoice = (await store.listInvoices()).find(candidate => candidate.calls.some(call => call.conversationId === conversationId))
   if (invoice !== undefined) {
-    if (!fromAgent(payloadAgentId, relanceAgentId)) return NextResponse.json({ ignored: 'agent inattendu', conversationId })
+    if (!fromAgent(payloadAgentId, relanceAgentId) && (relancePhoneAgentId === undefined || payloadAgentId !== relancePhoneAgentId)) return NextResponse.json({ ignored: 'agent inattendu', conversationId })
     if (invoice.status === 'encaissee') return NextResponse.json({ ignored: 'facture déjà encaissée', conversationId })
-    const closed = applyRelanceResult(invoice, relanceResultFromPayload(payload), await workspaceNow(store))
+    const closed = applyRelanceResult(invoice, preferLiveAnswer(invoice, relanceResultFromPayload(payload)), await workspaceNow(store))
     await store.saveInvoice(closed)
     return NextResponse.json({ ok: true, invoiceId: closed.id, status: closed.status, verified: webhookSecret !== undefined })
   }

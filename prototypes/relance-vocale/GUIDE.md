@@ -30,7 +30,8 @@ Sur `/signaux`, « Balayer » interroge l'[API Recherche d'entreprises](https://
 Trois façons de passer un appel, depuis la console vocale d'une facture ou d'un prospect :
 
 1. **Navigateur** — vous jouez l'interlocuteur, l'agent vous parle via WebSocket avec les variables de la facture ou du prospect (`@elevenlabs/react`). À la fin, l'app relit l'analyse de l'agent (`action: 'analyze'`) et met la fiche à jour : promesse, litige, rendez-vous. Si l'analyse ne revient pas, vous qualifiez l'issue à la main.
-2. **Téléphone** — appel sortant ElevenLabs (Twilio ou SIP) vers le numéro saisi. L'app interroge l'analyse jusqu'à la fin de l'appel ; le webhook post-appel fait le même travail quand personne n'a la page ouverte.
+   Pour une facture, Léa note la réponse du client pendant l'appel avec son outil client `noter_reponse` (issue, date, montant, citation, cause du retard, pièce attendue, rappel). La console l'envoie à `action: 'note'` : la fiche et la carte changent aussitôt, et la date dite en mots (« demain », « vendredi », « fin du mois ») est résolue au calendrier de Paris (`core/spoken-date.ts`). Au raccrochage, `action: 'close'` sans issue applique cette réponse et la carte change de colonne ; l'analyse n'ajoute ensuite que le résumé et la transcription. La même console s'ouvre depuis chaque carte du tableau (bouton micro, panneau latéral).
+2. **Téléphone** — appel sortant ElevenLabs (Twilio ou SIP) vers le numéro saisi. L'app interroge l'analyse jusqu'à la fin de l'appel ; le webhook post-appel fait le même travail quand personne n'a la page ouverte. L'outil client ne tourne pas au téléphone (aucun navigateur ne tient la session) : la variable `outil_direct` vaut « non » et la fiche se met à jour à la fin de l'appel.
 3. **Simulation** — sans minutes consommées, rejoue un appel terminé avec sa transcription.
 
 ## La boucle lettre → QR → appel
@@ -79,7 +80,7 @@ vercel deploy --prod
 ### 1. Clé API et agents
 
 - Clé : https://elevenlabs.io/app/settings/api-keys → `ELEVENLABS_API_KEY`. Voix française de la Voice Library → `ELEVENLABS_VOICE_ID`.
-- `pnpm sync-agents` crée les deux agents, ou les met à jour s'ils existent : prospection (`core/agent-prompt.ts` → `ELEVENLABS_AGENT_ID`) et relance (`core/relance-prompt.ts` → `ELEVENLABS_RELANCE_AGENT_ID`). Il déclare la langue, la voix, les variables dynamiques avec une valeur par défaut, la collecte de données et le critère d'évaluation, et écrit les identifiants dans `.env.local`.
+- `pnpm sync-agents` crée les deux agents, ou les met à jour s'ils existent : prospection (`core/agent-prompt.ts` → `ELEVENLABS_AGENT_ID`) et relance (`core/relance-prompt.ts` → `ELEVENLABS_RELANCE_AGENT_ID`). Il déclare la langue, la voix, les variables dynamiques avec une valeur par défaut, la collecte de données et le critère d'évaluation, et écrit les identifiants dans `.env.local`. Pour l'agent de relance, il crée aussi l'outil client `noter_reponse` (ressource d'espace de travail, identifiant dans `ELEVENLABS_RELANCE_TOOL_ID`) et active la fin d'appel et la détection de répondeur.
 - Après une modification des consignes, relancer `pnpm sync-agents`.
 
 ### 2. Conversation dans le navigateur

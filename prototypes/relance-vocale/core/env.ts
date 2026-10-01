@@ -11,6 +11,8 @@ export interface ElevenLabsEnv {
   agentId?: string
   /** Agent that reminds the client's customers about invoices. */
   relanceAgentId?: string
+  /** Same reminder agent without the browser-only answer tool, for phone calls; the reminder agent when unset. */
+  relancePhoneAgentId?: string
   phoneNumberId?: string
   webhookSecret?: string
 }
@@ -20,6 +22,7 @@ export function elevenLabsEnv(): ElevenLabsEnv {
     apiKey: read('ELEVENLABS_API_KEY'),
     agentId: read('ELEVENLABS_AGENT_ID'),
     relanceAgentId: read('ELEVENLABS_RELANCE_AGENT_ID'),
+    relancePhoneAgentId: read('ELEVENLABS_RELANCE_PHONE_AGENT_ID'),
     phoneNumberId: read('ELEVENLABS_PHONE_NUMBER_ID'),
     webhookSecret: read('ELEVENLABS_WEBHOOK_SECRET'),
   }

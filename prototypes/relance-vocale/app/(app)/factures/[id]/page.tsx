@@ -24,6 +24,8 @@ export const dynamic = 'force-dynamic'
 
 const MODE_LABEL = { navigateur: 'navigateur', telephone: 'téléphone', simulation: 'simulation' } as const
 
+const ANSWER_SOURCE = { direct: `Noté en direct par ${AGENT_NAME}`, analyse: 'Lu dans l’analyse de l’appel', page: 'Donné sur la page de réponse', vous: 'Qualifié par votre équipe' } as const
+
 const ACTION_VERB = { email: 'Préparer l’email maintenant', appel: 'Passer l’appel maintenant', verification: 'Vérifier maintenant', humain: 'Passer la main maintenant' } as const
 
 export default async function InvoicePage({ params }: { params: Promise<{ id: string }> }) {
@@ -95,6 +97,14 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
             <div className="card p-5">
               <p className="label">Ce que {AGENT_NAME} sait</p>
               <p className="mt-2 text-[17px] font-semibold leading-snug text-ink">{invoice.knows}</p>
+              {invoice.answer !== undefined && invoice.status !== 'encaissee' && (invoice.answer.quote !== undefined || invoice.answer.delayReason !== undefined) && (
+                <div className="mt-3 border-l-2 border-blue pl-3">
+                  <p className="label">Réponse du client</p>
+                  {invoice.answer.quote !== undefined && <p className="mt-1 text-[14px] italic leading-relaxed text-ink-2">« {invoice.answer.quote} »</p>}
+                  {invoice.answer.delayReason !== undefined && <p className="mt-1 text-[12.5px] text-muted">Cause du retard : <span className="font-semibold text-ink-2">{invoice.answer.delayReason}</span></p>}
+                  <p className="mt-1 text-[11.5px] text-faint">{ANSWER_SOURCE[invoice.answer.source]} · {formatDateTime(invoice.answer.notedAt)}</p>
+                </div>
+              )}
               {invoice.disputeReason !== undefined && invoice.status === 'litige' && <p className="mt-3 rounded-md bg-fuchsia-soft/60 px-3 py-2 text-[13px] leading-relaxed text-fuchsia">{invoice.disputeReason}</p>}
               <div className="mt-4 flex gap-[3px]" aria-label="Avancement de la séquence">
                 {PLAYBOOK.map((step, index) => (
@@ -190,7 +200,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
             phone={invoice.debtor.phone}
             browserReady={browserReady}
             phoneReady={phoneReady}
-            dynamicVariables={relanceVariablesFor(invoice, new Date(now))}
+            dynamicVariables={relanceVariablesFor(invoice, new Date(now), { liveTool: true })}
             defaultAmountEur={invoice.amountEur}
           />
 

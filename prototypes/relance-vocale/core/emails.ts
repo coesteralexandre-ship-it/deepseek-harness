@@ -8,6 +8,7 @@ export const EMAIL_KIND_META: Record<EmailKind, { label: string; hint: string }>
   rappel: { label: 'Rappel courtois', hint: 'Le lendemain de l’échéance, avec la facture et le lien de réponse' },
   date: { label: 'Demande de date', hint: 'Une semaine après, pour obtenir une date de règlement' },
   recap_promesse: { label: 'Récapitulatif de promesse', hint: 'Après un appel qui a donné une date : à confirmer d’un clic' },
+  avis_virement: { label: 'Demande d’avis de virement', hint: 'Le client dit avoir déjà réglé : on demande la référence pour le retrouver' },
   promesse_rompue: { label: 'Promesse non tenue', hint: 'Le lendemain d’une date promise sans virement' },
   recap_appel: { label: 'Récapitulatif d’appel', hint: 'Après l’appel ferme, pour garder une trace écrite' },
   litige: { label: 'Réponse au litige', hint: 'La pièce manquante, envoyée par votre équipe' },
@@ -36,6 +37,10 @@ export function composeEmail(invoice: Invoice, kind: EmailKind, now: number): { 
   const link = answerUrl(invoice)
   const promise = [...invoice.promises].reverse().find(entry => entry.status !== 'tenue')
   const called = lastCallDate(invoice)
+  // Every payment still expected, in date order: a payment in two parts is recapped in full.
+  const pending = invoice.promises.filter(entry => entry.status === 'attendue').sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+  // The date the debtor gave for a payment already made, not the day the check was scheduled.
+  const claimedOn = invoice.answer?.outcome === 'deja_regle' ? invoice.answer.promiseDate : undefined
   const SIGNATURE = `Bien cordialement,\n${invoice.creditor.team}\n${invoice.creditor.company}, ${invoice.creditor.city}`
   switch (kind) {
     case 'rappel':
@@ -48,16 +53,38 @@ export function composeEmail(invoice: Invoice, kind: EmailKind, now: number): { 
         subject: `Facture ${invoice.number} : pouvez-vous nous donner une date ?`,
         body: `Bonjour ${name},\n\n${called !== undefined ? `Suite à l’appel de ${AGENT_NAME}, notre assistante vocale, le ${called}, je` : 'Je'} reviens vers vous au sujet de la facture ${invoice.number} de ${amount}, échue depuis ${late} jours.\n\nPouvez-vous nous indiquer à quelle date le règlement est prévu ? Un paiement en deux fois nous convient s’il vous arrange. Vous pouvez répondre à cet email ou directement ici : ${link}\n\nS’il manque une pièce (relevé d’heures, contrat de mise à disposition), dites-le-nous : nous vous l’envoyons le jour même.\n\n${SIGNATURE}`,
       }
-    case 'recap_promesse':
+    case 'recap_promesse': {
+      const lines = pending.length > 0
+        ? pending.map(entry => `· ${formatEur(entry.amountEur, true)} le ${formatLongDay(entry.dueDate)}`).join('\n')
+        : `· Montant : ${amount}\n· Date de règlement : à préciser`
+      const first = pending[0]
+      const subject = pending.length > 1
+        ? `Récapitulatif : règlement en ${pending.length} fois, à partir du ${formatDay(first?.dueDate ?? invoice.dueDate)}`
+        : `Récapitulatif : règlement de ${first !== undefined ? formatEur(first.amountEur) : amount} le ${first !== undefined ? formatDay(first.dueDate) : 'jour convenu'}`
       return {
-        subject: `Récapitulatif : règlement de ${promise !== undefined ? formatEur(promise.amountEur) : amount} le ${promise !== undefined ? formatDay(promise.dueDate) : 'jour convenu'}`,
-        body: `Bonjour ${name},\n\nMerci pour votre retour${called !== undefined ? ` lors de notre échange du ${called}` : ''}. Voici ce que nous avons noté pour la facture ${invoice.number} :\n\n· Montant : ${promise !== undefined ? formatEur(promise.amountEur, true) : amount}\n· Date de règlement : ${promise !== undefined ? formatLongDay(promise.dueDate) : 'à préciser'}\n\nPouvez-vous confirmer d’un clic que c’est bien exact ? ${link}\n\nNous ne vous relancerons pas d’ici là.\n\n${SIGNATURE}`,
+        subject,
+        body: `Bonjour ${name},\n\nMerci pour votre retour${called !== undefined ? ` lors de notre échange du ${called}` : ''}. Voici ce que nous avons noté pour la facture ${invoice.number} :\n\n${lines}\n\nPouvez-vous confirmer d’un clic que c’est bien exact ? ${link}\n\nNous ne vous relancerons pas d’ici là.\n\n${SIGNATURE}`,
       }
-    case 'promesse_rompue':
+    }
+    case 'avis_virement':
+      return {
+        subject: `Facture ${invoice.number} : pouvez-vous nous transmettre l’avis de virement ?`,
+        body: `Bonjour ${name},\n\nMerci${called !== undefined ? ` pour votre retour lors de notre échange du ${called}` : ' pour votre retour'} : vous nous indiquez que la facture ${invoice.number} de ${amount} a été réglée${claimedOn !== undefined ? ` le ${formatLongDay(claimedOn)}` : ''}.\n\nNous ne retrouvons pas encore ce virement sur notre relevé. Pour le rapprocher sans vous relancer, pouvez-vous nous transmettre l’avis de virement ou sa référence ? Vous pouvez répondre à cet email ou ici : ${link}\n\nNous suspendons les relances le temps de vérifier.\n\n${SIGNATURE}`,
+      }
+    case 'promesse_rompue': {
+      // The promise that just broke, not a later instalment still ahead.
+      const broken = [...invoice.promises].reverse().find(entry => entry.status === 'rompue') ?? promise
+      if (broken?.claimed === true) {
+        return {
+          subject: `Facture ${invoice.number} : nous ne retrouvons pas votre virement`,
+          body: `Bonjour ${name},\n\nVous nous avez indiqué avoir réglé la facture ${invoice.number} de ${formatEur(broken.amountEur)}${claimedOn !== undefined ? ` le ${formatLongDay(claimedOn)}` : ''}. Nous ne retrouvons pas ce virement sur notre relevé.\n\nPouvez-vous nous transmettre l’avis de virement, ou nous indiquer la date à laquelle il partira ? ${link}\n\n${SIGNATURE}`,
+        }
+      }
       return {
         subject: `Facture ${invoice.number} : règlement prévu non reçu`,
-        body: `Bonjour ${name},\n\nNous n’avons pas encore reçu le règlement de ${promise !== undefined ? formatEur(promise.amountEur) : amount} prévu le ${promise !== undefined ? formatLongDay(promise.dueDate) : 'jour convenu'} pour la facture ${invoice.number}. Il s’agit peut-être d’un simple décalage.\n\nPouvez-vous nous indiquer la nouvelle date ? ${link}\n\n${SIGNATURE}`,
+        body: `Bonjour ${name},\n\nNous n’avons pas encore reçu le règlement de ${broken !== undefined ? formatEur(broken.amountEur) : amount} prévu le ${broken !== undefined ? formatLongDay(broken.dueDate) : 'jour convenu'} pour la facture ${invoice.number}. Il s’agit peut-être d’un simple décalage.\n\nPouvez-vous nous indiquer la nouvelle date ? ${link}\n\n${SIGNATURE}`,
       }
+    }
     case 'recap_appel':
       return {
         subject: `Facture ${invoice.number} : suite à notre appel`,

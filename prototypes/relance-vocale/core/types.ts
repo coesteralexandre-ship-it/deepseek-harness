@@ -102,7 +102,10 @@ export const INVOICE_STAGES = ['a_relancer', 'email_envoye', 'appel', 'promesse'
 export type InvoiceStatus = (typeof INVOICE_STAGES)[number]
 
 export type PromiseStatus = 'attendue' | 'tenue' | 'rompue'
-export type RelanceOutcome = 'promesse' | 'litige' | 'renvoi' | 'rappel' | 'sans_suite'
+export type RelanceOutcome = 'promesse' | 'deja_regle' | 'litige' | 'renvoi' | 'rappel' | 'sans_suite'
+
+/** Every reminder outcome, in the order the UI lists them. */
+export const RELANCE_OUTCOMES = ['promesse', 'deja_regle', 'litige', 'renvoi', 'rappel', 'sans_suite'] as const satisfies readonly RelanceOutcome[]
 
 /** How a debtor behaves; drives the demo autopilot, never real calls. */
 export type PayerProfile = 'fiable' | 'lent' | 'mauvais' | 'litige' | 'absent' | 'renvoi'
@@ -116,6 +119,37 @@ export interface PaymentPromise {
   status: PromiseStatus
   /** Set when the debtor confirmed the written recap. */
   confirmedAt?: string
+  /** The debtor says this payment already left: the bank statement settles it. */
+  claimed?: boolean
+}
+
+/**
+ * What the debtor answered, as the agent noted it during the call (or the debtor on the answer page).
+ * Dates are resolved to the Paris calendar; `quote` keeps the debtor's own words.
+ */
+export interface DebtorAnswer {
+  outcome: RelanceOutcome
+  /** The debtor's own words, one short sentence. */
+  quote?: string
+  /** Why the invoice is not paid yet, in the debtor's terms (validation, own client late, cash, missing document). */
+  delayReason?: string
+  /** YYYY-MM-DD of the promised (or claimed) payment. */
+  promiseDate?: string
+  promiseAmountEur?: number
+  /** Second instalment when the debtor pays in two. */
+  secondDate?: string
+  secondAmountEur?: number
+  disputeReason?: string
+  /** Document the debtor waits for before paying. */
+  missingDocument?: string
+  /** Person to deal with instead: name, role, email or phone. */
+  rightContact?: string
+  /** ISO instant the debtor asked to be called back. */
+  callbackAt?: string
+  /** ISO instant the answer was noted. */
+  notedAt: string
+  /** Noted live by the agent, or read from the post-call analysis. */
+  source: 'direct' | 'analyse' | 'page' | 'vous'
 }
 
 /** One reminder conversation about an invoice. */
@@ -131,11 +165,13 @@ export interface RelanceCallRecord {
   disputeReason?: string
   /** Person to call instead, when the debtor redirected the agent. */
   rightContact?: string
+  /** Answer the agent noted during the call; it decides the outcome when the call closes. */
+  answer?: DebtorAnswer
   transcript?: TranscriptTurn[]
   error?: string
 }
 
-export type EmailKind = 'rappel' | 'date' | 'recap_promesse' | 'promesse_rompue' | 'recap_appel' | 'litige' | 'renvoi'
+export type EmailKind = 'rappel' | 'date' | 'recap_promesse' | 'avis_virement' | 'promesse_rompue' | 'recap_appel' | 'litige' | 'renvoi'
 export type EmailStatus = 'brouillon' | 'envoye'
 
 /** An email prepared for the debtor; it leaves only when a person sends it. */
@@ -217,6 +253,8 @@ export interface Invoice {
   calls: RelanceCallRecord[]
   emails: EmailDraft[]
   activities: Activity[]
+  /** Latest answer of the debtor, whatever the channel: what the CRM shows as « Réponse du client ». */
+  answer?: DebtorAnswer
   /** A dated follow-up that overrides the playbook (callback requested, broken promise). */
   followUpAt?: string
   paidAt?: string

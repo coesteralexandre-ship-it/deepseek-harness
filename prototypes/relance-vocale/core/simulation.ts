@@ -35,6 +35,22 @@ export function simulatedCall(invoice: Invoice, outcome: RelanceOutcome, now: nu
         summary: `${contact} confirme que la facture est validée et la passe dans la prochaine campagne de virements.`,
         promiseAmountEur: invoice.amountEur,
         promiseDate: isoDay(now, promiseInDays),
+        quote: 'Elle est validée, elle part dans notre prochaine campagne de virements.',
+        delayReason: 'Validation interne terminée, virements groupés',
+      }
+    case 'deja_regle':
+      return {
+        mode: 'simulation',
+        outcome,
+        transcript: [
+          ...opening(invoice),
+          { role: 'user', text: 'Elle est déjà payée, le virement est parti lundi dernier.' },
+          { role: 'agent', text: 'Merci. Je ne le vois pas encore de notre côté : pouvez-vous nous transmettre l’avis de virement ? Je vous envoie un email pour ça. Bonne journée.' },
+        ],
+        summary: `${contact} affirme que le virement est parti lundi dernier ; avis de virement demandé pour le rapprocher.`,
+        promiseAmountEur: invoice.amountEur,
+        promiseDate: isoDay(now, -((parisWeekday(now) + 6) % 7 || 7)),
+        quote: 'Elle est déjà payée, le virement est parti lundi dernier.',
       }
     case 'litige':
       return {
@@ -47,6 +63,8 @@ export function simulatedCall(invoice: Invoice, outcome: RelanceOutcome, now: nu
         ],
         summary: `${contact} bloque la facture tant que le relevé d’heures de la dernière semaine n’est pas signé.`,
         disputeReason: 'Relevé d’heures de la dernière semaine non signé par le chef d’équipe.',
+        missingDocument: 'Relevé d’heures signé',
+        quote: 'Le relevé d’heures de la dernière semaine n’est pas signé, je ne peux pas la valider.',
       }
     case 'renvoi':
       return {
@@ -70,6 +88,8 @@ export function simulatedCall(invoice: Invoice, outcome: RelanceOutcome, now: nu
           { role: 'agent', text: 'Bien sûr, je vous rappelle demain matin. Bonne réunion.' },
         ],
         summary: `${contact} était en réunion et demande un rappel demain matin.`,
+        quote: 'Je suis en réunion, rappelez-moi demain matin.',
+        callbackAt: 'demain matin',
       }
     default:
       return {

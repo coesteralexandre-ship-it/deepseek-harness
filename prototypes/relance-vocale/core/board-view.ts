@@ -14,6 +14,8 @@ export interface CardView {
   amountEur: number
   daysLate: number
   knows: string
+  /** The debtor's own words from the latest answer, while the invoice is open. */
+  quote?: string
   next?: { kind: NextActionKind; label: string; when: string; due: boolean }
   drafts: number
   promise?: { amountEur: number; day: string; confirmed: boolean }
@@ -105,6 +107,7 @@ function cardOf(invoice: Invoice, now: number): CardView {
     amountEur: invoice.amountEur,
     daysLate: daysSince(invoice.dueDate, now),
     knows: invoice.knows,
+    quote: invoice.status !== 'encaissee' ? invoice.answer?.quote : undefined,
     next: action === undefined ? undefined : { kind: action.kind, label: action.label, when: whenLabel(action.at, now), due: Date.parse(action.at) <= now },
     drafts: invoice.emails.filter(email => email.status === 'brouillon').length,
     promise: promise === undefined ? undefined : { amountEur: promise.amountEur, day: formatDay(promise.dueDate), confirmed: promise.confirmedAt !== undefined },

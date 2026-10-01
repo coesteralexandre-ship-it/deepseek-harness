@@ -1,9 +1,12 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useEffect, useLayoutEffect, useRef, useState, type DragEvent } from 'react'
 import { ActorBadge, actorLabel } from '@/components/actor-badge'
 import { CountUp } from '@/components/count-up'
+import { LeaSheet } from '@/components/lea-sheet'
+import { AGENT_NAME } from '@/core/agent-prompt'
 import type { BoardView, CardView, ColumnView } from '@/core/board-view'
 import type { NextActionKind } from '@/core/receivables'
 import type { Tone } from '@/core/stages'
@@ -70,6 +73,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 export function RelanceBoard({ initial }: { initial: BoardView }) {
+  const router = useRouter()
   const [view, setView] = useState(initial)
   const [busy, setBusy] = useState<string | null>(null)
   const [playing, setPlaying] = useState(false)
@@ -77,11 +81,20 @@ export function RelanceBoard({ initial }: { initial: BoardView }) {
   const [over, setOver] = useState<InvoiceStatus | null>(null)
   const [changed, setChanged] = useState<Set<string>>(new Set())
   const [fresh, setFresh] = useState<Set<string>>(new Set())
+  /** Invoice whose voice console is open in the side panel. */
+  const [talking, setTalking] = useState<{ id: string; company: string } | null>(null)
+  /** A call is in progress in the side panel: no other card may open it. */
+  const [onCall, setOnCall] = useState(false)
   const stop = useRef(false)
   const nodes = useRef(new Map<string, HTMLElement>())
   const rects = useRef(new Map<string, DOMRect>())
 
   useEffect(() => setView(initial), [initial])
+
+  // A call starting in the side panel stops a running replay: the autopilot must not move the invoice under Léa.
+  useEffect(() => {
+    if (onCall) stop.current = true
+  }, [onCall])
 
   // FLIP: every card glides from where it was to where it lands.
   useLayoutEffect(() => {
@@ -161,8 +174,21 @@ export function RelanceBoard({ initial }: { initial: BoardView }) {
     })
   }
 
+  /** Pull the board after the console changed an invoice, so the card flashes and glides. */
+  const pull = async () => {
+    try {
+      const response = await fetch('/api/autopilot', { cache: 'no-store' })
+      if (!response.ok) throw new Error(`Erreur ${response.status}`)
+      apply((await response.json()) as BoardView)
+    } catch {
+      // Fall back to a server render: the board is up to date, only the flash is lost.
+      router.refresh()
+    }
+  }
+
   const { kpis } = view
-  const locked = busy !== null || playing
+  // The clock and the reset wait while a call runs in the side panel: they would move the invoice under Léa.
+  const locked = busy !== null || playing || onCall
 
   return (
     <div className="space-y-6">
@@ -205,7 +231,7 @@ export function RelanceBoard({ initial }: { initial: BoardView }) {
             ))}
           </div>
           <button type="button" className="btn btn-sm" disabled={locked} onClick={() => advance(1)}>+1 jour</button>
-          <button type="button" className={`btn btn-sm ${playing ? 'btn-ink' : 'btn-primary'}`} disabled={busy !== null && !playing} onClick={replay}>
+          <button type="button" className={`btn btn-sm ${playing ? 'btn-ink' : 'btn-primary'}`} disabled={(busy !== null && !playing) || onCall} onClick={replay}>
             {playing ? '❚❚ Pause' : '▶ Rejouer 14 jours'}
           </button>
           <button type="button" className="btn btn-sm btn-ghost" disabled={locked} onClick={reset}>Remettre à zéro</button>
@@ -236,6 +262,9 @@ export function RelanceBoard({ initial }: { initial: BoardView }) {
                 onOver={() => setOver(column.status)}
                 onLeave={() => setOver(current => (current === column.status ? null : current))}
                 onDrop={event => onDrop(event, column.status)}
+                talking={talking?.id}
+                locked={onCall || playing || busy !== null}
+                onTalk={card => setTalking({ id: card.id, company: card.company })}
               />
             ))}
           </div>
@@ -268,6 +297,20 @@ export function RelanceBoard({ initial }: { initial: BoardView }) {
           </ol>
         </aside>
       </div>
+
+      {talking !== null && (
+        <LeaSheet
+          invoiceId={talking.id}
+          company={talking.company}
+          boardNow={view.now}
+          onClose={() => {
+            setTalking(null)
+            setOnCall(false)
+          }}
+          onChange={() => void pull()}
+          onBusyChange={setOnCall}
+        />
+      )}
     </div>
   )
 }
@@ -291,9 +334,14 @@ interface ColumnProps {
   onOver: () => void
   onLeave: () => void
   onDrop: (event: DragEvent<HTMLDivElement>) => void
+  /** Invoice whose console is open. */
+  talking?: string
+  /** A call is in progress: the other cards' mic buttons are off. */
+  locked: boolean
+  onTalk: (card: CardView) => void
 }
 
-function Column({ column, cards, over, changed, nodes, onOver, onLeave, onDrop }: ColumnProps) {
+function Column({ column, cards, over, changed, nodes, onOver, onLeave, onDrop, talking, locked, onTalk }: ColumnProps) {
   return (
     <div
       className={`flex min-h-[560px] flex-col rounded-lg border border-line transition-colors ${over ? 'column-over' : ''}`}
@@ -327,7 +375,7 @@ function Column({ column, cards, over, changed, nodes, onOver, onLeave, onDrop }
               event.dataTransfer.effectAllowed = 'move'
             }}
           >
-            <Card card={card} flash={changed.has(card.id)} tone={column.tone} />
+            <Card card={card} flash={changed.has(card.id)} tone={column.tone} active={talking === card.id} locked={locked && talking !== card.id} navLocked={locked} onTalk={() => onTalk(card)} />
           </div>
         ))}
         {cards.length === 0 && <div className="grid flex-1 place-items-center rounded-md border border-dashed border-line-2 text-[11.5px] font-medium text-faint">Déposer ici</div>}
@@ -336,33 +384,43 @@ function Column({ column, cards, over, changed, nodes, onOver, onLeave, onDrop }
   )
 }
 
-function Card({ card, flash, tone }: { card: CardView; flash: boolean; tone: Tone }) {
+function Card({ card, flash, tone, active, locked, navLocked, onTalk }: { card: CardView; flash: boolean; tone: Tone; active: boolean; locked: boolean; navLocked: boolean; onTalk: () => void }) {
   return (
-    <Link
-      href={`/factures/${card.id}`}
-      className={`card block p-3 transition-[border-color,transform] hover:-translate-y-px hover:border-blue ${flash ? 'animate-flash' : ''}`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <p className="min-w-0 text-[13.5px] font-bold leading-tight text-ink">{card.company}</p>
-        <p className="tabular shrink-0 text-[13.5px] font-bold text-ink">{euro(card.amountEur)}</p>
-      </div>
-      <p className="tabular mt-1 font-mono text-[10.5px] text-muted">
-        {card.number} · {card.status === 'encaissee' ? `réglée le ${card.paidDay ?? '—'}` : `${card.daysLate} j de retard`}
-      </p>
-
-      {card.status === 'litige'
-        ? <p className="mt-2 line-clamp-2 rounded-sm bg-fuchsia-soft/60 px-2 py-1.5 text-[11.5px] leading-snug text-fuchsia">{card.knows}</p>
-        : <p className="mt-2 line-clamp-2 text-[12px] leading-snug text-ink-2">{card.knows}</p>}
-
-      {(card.promise !== undefined || card.drafts > 0 || card.broken > 0) && (
-        <div className="mt-2 flex flex-wrap gap-1">
-          {card.promise !== undefined && card.status === 'promesse' && (
-            <span className="pill pill-warn !py-1 !text-[10.5px]">{card.promise.day}{card.promise.confirmed ? ' · confirmée' : ''}</span>
-          )}
-          {card.drafts > 0 && <span className="pill pill-amethyst !py-1 !text-[10.5px]">{card.drafts} brouillon{card.drafts > 1 ? 's' : ''}</span>}
-          {card.broken > 0 && card.status !== 'encaissee' && <span className="pill pill-hot !py-1 !text-[10.5px]">{card.broken} rompue{card.broken > 1 ? 's' : ''}</span>}
+    <div className={`card block p-3 transition-[border-color,transform,box-shadow] hover:-translate-y-px hover:border-blue ${flash ? 'animate-flash' : ''} ${active ? 'border-blue shadow-[0_0_0_3px_var(--color-blue-mist)]' : ''}`}>
+      {/* Leaving the board during a call would cut it before Léa's answer is saved. */}
+      <Link
+        href={`/factures/${card.id}`}
+        className="block"
+        aria-disabled={navLocked || undefined}
+        onClick={event => {
+          if (navLocked) event.preventDefault()
+        }}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <p className="min-w-0 text-[13.5px] font-bold leading-tight text-ink">{card.company}</p>
+          <p className="tabular shrink-0 text-[13.5px] font-bold text-ink">{euro(card.amountEur)}</p>
         </div>
-      )}
+        <p className="tabular mt-1 font-mono text-[10.5px] text-muted">
+          {card.number} · {card.status === 'encaissee' ? `réglée le ${card.paidDay ?? '—'}` : `${card.daysLate} j de retard`}
+        </p>
+
+        {card.status === 'litige'
+          ? <p className="mt-2 line-clamp-2 rounded-sm bg-fuchsia-soft/60 px-2 py-1.5 text-[11.5px] leading-snug text-fuchsia">{card.knows}</p>
+          : <p className="mt-2 line-clamp-2 text-[12px] leading-snug text-ink-2">{card.knows}</p>}
+        {card.quote !== undefined && card.status !== 'litige' && (
+          <p className="mt-1.5 line-clamp-2 border-l-2 border-line-2 pl-2 text-[11.5px] italic leading-snug text-muted">« {card.quote} »</p>
+        )}
+
+        {(card.promise !== undefined || card.drafts > 0 || card.broken > 0) && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {card.promise !== undefined && card.status === 'promesse' && (
+              <span className="pill pill-warn !py-1 !text-[10.5px]">{card.promise.day}{card.promise.confirmed ? ' · confirmée' : ''}</span>
+            )}
+            {card.drafts > 0 && <span className="pill pill-amethyst !py-1 !text-[10.5px]">{card.drafts} brouillon{card.drafts > 1 ? 's' : ''}</span>}
+            {card.broken > 0 && card.status !== 'encaissee' && <span className="pill pill-hot !py-1 !text-[10.5px]">{card.broken} rompue{card.broken > 1 ? 's' : ''}</span>}
+          </div>
+        )}
+      </Link>
 
       <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-line pt-2">
         {card.next !== undefined
@@ -373,13 +431,28 @@ function Card({ card, flash, tone }: { card: CardView; flash: boolean; tone: Ton
             </span>
           )
           : <span className="text-[11.5px] font-semibold" style={{ color: BAND[tone] }}>{card.status === 'encaissee' ? '✓ Clos' : card.status === 'litige' ? 'Pièce à envoyer' : 'À votre équipe'}</span>}
-        {card.lastActor !== undefined && <ActorBadge actor={card.lastActor} size="sm" />}
+        <span className="flex shrink-0 items-center gap-1.5">
+          {card.status !== 'encaissee' && (
+            <button
+              type="button"
+              onClick={onTalk}
+              disabled={locked}
+              draggable={false}
+              title={`Parler à ${AGENT_NAME} : vous jouez ${card.contact}`}
+              aria-label={`Parler à ${AGENT_NAME} au sujet de ${card.company}`}
+              className={`grid h-6 w-6 place-items-center rounded-full border transition-colors ${active ? 'animate-ring border-blue bg-blue text-white' : 'border-line-2 bg-card text-blue hover:border-blue hover:bg-blue hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-card disabled:hover:text-blue'}`}
+            >
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
+            </button>
+          )}
+          {card.lastActor !== undefined && <ActorBadge actor={card.lastActor} size="sm" />}
+        </span>
       </div>
       <div className="mt-2 flex gap-[3px]" aria-label={`Séquence : ${card.progress} étapes sur 6`}>
         {Array.from({ length: 6 }, (_, index) => (
           <span key={index} className={`h-[3px] flex-1 rounded-full ${index < card.progress ? 'bg-ink' : 'bg-line'}`} />
         ))}
       </div>
-    </Link>
+    </div>
   )
 }

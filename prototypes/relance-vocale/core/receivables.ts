@@ -1,9 +1,13 @@
 import { DAY_MS, parisDate, parisDayAt, parisDayDiff, parisParts, parisShiftDays, parisTime, parisWeekday } from './clock.ts'
+import { dateFromTranscript, describeAnswer, emailFromTranscript, extractEmail, parseRelanceOutcome, parseSpokenAmount, quoteFromTranscript, settleAmounts } from './answer.ts'
 import { draftEmail } from './emails.ts'
 import { daysSince, formatDay, formatEur } from './format.ts'
 import { newId } from './ids.ts'
 import type { Tone } from './stages.ts'
-import type { Activity, CallMode, EmailKind, Invoice, InvoiceStatus, PaymentPromise, PromiseStatus, RelanceCallRecord, RelanceOutcome, TranscriptTurn } from './types.ts'
+import { resolveSpokenCallback, resolveSpokenDate } from './spoken-date.ts'
+import type { Activity, CallMode, DebtorAnswer, EmailKind, Invoice, InvoiceStatus, PaymentPromise, PromiseStatus, RelanceCallRecord, RelanceOutcome, TranscriptTurn } from './types.ts'
+
+export { parseRelanceOutcome }
 
 export const STAGE_META: Record<InvoiceStatus, { label: string; hint: string; tone: Tone }> = {
   a_relancer: { label: 'À relancer', hint: 'Échue, la séquence démarre', tone: 'neutral' },
@@ -45,6 +49,7 @@ export const PROMISE_STATUS_META: Record<PromiseStatus, { label: string; tone: T
 
 export const RELANCE_OUTCOME_META: Record<RelanceOutcome, { label: string; tone: Tone }> = {
   promesse: { label: 'Promesse obtenue', tone: 'ok' },
+  deja_regle: { label: 'Déjà réglé', tone: 'turquoise' },
   litige: { label: 'Litige exprimé', tone: 'hot' },
   renvoi: { label: 'Facture renvoyée', tone: 'neutral' },
   rappel: { label: 'Rappel demandé', tone: 'warn' },
@@ -98,8 +103,9 @@ export function boardAmountEur(invoice: Invoice): number {
   return invoice.status === 'encaissee' ? invoice.amountEur : remainingEur(invoice)
 }
 
+/** The pending promise due first: with a payment in two parts, the earlier part is checked first. */
 export function openPromise(invoice: Invoice): PaymentPromise | undefined {
-  return invoice.promises.find(promise => promise.status === 'attendue')
+  return invoice.promises.filter(promise => promise.status === 'attendue').sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0]
 }
 
 /** What the engine does next on this invoice, and when; none once it is paid, disputed or handed over. */
@@ -107,7 +113,10 @@ export function nextAction(invoice: Invoice): NextAction | undefined {
   if (invoice.status === 'encaissee' || invoice.status === 'litige' || invoice.status === 'a_vous') return undefined
   const promise = openPromise(invoice)
   if (invoice.status === 'promesse' && promise !== undefined && !Number.isNaN(Date.parse(promise.dueDate))) {
-    return { kind: 'verification', at: workingDay(dayAt(promise.dueDate, 1, 9)), label: `Vérifier le virement de ${formatEur(promise.amountEur)}` }
+    const verification: NextAction = { kind: 'verification', at: workingDay(dayAt(promise.dueDate, 1, 9)), label: `Vérifier le virement de ${formatEur(promise.amountEur)}` }
+    // A callback the debtor asked for while a promise is pending runs if it comes first.
+    if (invoice.followUpAt !== undefined && Date.parse(workingDay(invoice.followUpAt)) < Date.parse(verification.at)) return { kind: 'appel', at: workingDay(invoice.followUpAt), label: 'Rappel convenu' }
+    return verification
   }
   if (invoice.followUpAt !== undefined) return { kind: 'appel', at: workingDay(invoice.followUpAt), label: 'Rappel convenu' }
   const step = PLAYBOOK[invoice.playbookIndex]
@@ -146,11 +155,110 @@ export interface RelanceResult {
   outcome: RelanceOutcome
   summary?: string
   promiseAmountEur?: number
+  /** YYYY-MM-DD, or the debtor's words (« demain »), resolved against the call's start. */
   promiseDate?: string
+  /** Second instalment when the debtor pays in two. */
+  secondDate?: string
+  secondAmountEur?: number
   disputeReason?: string
+  missingDocument?: string
   rightContact?: string
+  /** The debtor's own words; read from the transcript when absent. */
+  quote?: string
+  delayReason?: string
+  /** ISO instant, or words (« demain 14 h »), of the callback the debtor asked for. */
+  callbackAt?: string
+  /** Where the answer comes from; `analyse` by default. */
+  answerSource?: DebtorAnswer['source']
   transcript?: TranscriptTurn[]
   error?: string
+}
+
+/** The result a call closes with when the agent noted the debtor's answer live; the analysis only adds the summary and the transcript. */
+export function resultFromAnswer(answer: DebtorAnswer, extra: Pick<RelanceResult, 'callId' | 'conversationId' | 'summary' | 'transcript'> = {}): RelanceResult {
+  return {
+    ...extra,
+    outcome: answer.outcome,
+    promiseDate: answer.promiseDate,
+    promiseAmountEur: answer.promiseAmountEur,
+    secondDate: answer.secondDate,
+    secondAmountEur: answer.secondAmountEur,
+    disputeReason: answer.disputeReason,
+    missingDocument: answer.missingDocument,
+    rightContact: answer.rightContact,
+    quote: answer.quote,
+    delayReason: answer.delayReason,
+    callbackAt: answer.callbackAt,
+    answerSource: answer.source,
+  }
+}
+
+/** The answer a result carries, dates resolved against `reference` (the call's start); words that name no date are dropped. */
+function answerOf(result: RelanceResult, reference: number, now: number): DebtorAnswer {
+  const payment = result.outcome === 'promesse' || result.outcome === 'deja_regle'
+  const answer: DebtorAnswer = { outcome: result.outcome, notedAt: new Date(now).toISOString(), source: result.answerSource ?? 'analyse' }
+  const quote = result.quote ?? quoteFromTranscript(result.transcript)
+  if (quote !== undefined) answer.quote = quote
+  if (result.delayReason !== undefined) answer.delayReason = result.delayReason
+  if (payment) {
+    const direction = result.outcome === 'deja_regle' ? 'passe' : 'futur'
+    // An answer someone already noted (Léa live, or a person) is not second-guessed from the transcript.
+    const noted = result.answerSource === 'direct' || result.answerSource === 'vous'
+    const date = resolveSpokenDate(result.promiseDate, reference, direction) ?? (noted ? undefined : dateFromTranscript(result.transcript, reference, direction))
+    if (date !== undefined) answer.promiseDate = date
+    if (result.promiseAmountEur !== undefined) answer.promiseAmountEur = result.promiseAmountEur
+    const second = result.outcome === 'promesse' ? resolveSpokenDate(result.secondDate, reference) : undefined
+    if (second !== undefined) {
+      answer.secondDate = second
+      if (result.secondAmountEur !== undefined) answer.secondAmountEur = result.secondAmountEur
+    }
+  }
+  if (result.outcome === 'litige') {
+    if (result.disputeReason !== undefined) answer.disputeReason = result.disputeReason
+    if (result.missingDocument !== undefined) answer.missingDocument = result.missingDocument
+  }
+  if (result.rightContact !== undefined) answer.rightContact = result.rightContact
+  if (result.outcome === 'rappel') {
+    // Resolved against the call's start, then kept only if still ahead and within the callback window.
+    const at = resolveSpokenCallback(result.callbackAt, reference)
+    if (at !== undefined && Date.parse(at) > now) answer.callbackAt = at
+  }
+  return answer
+}
+
+/** When the call a result closes carries a live answer, that answer decides; the result only brings the summary and the transcript. */
+export function preferLiveAnswer(invoice: Invoice, result: RelanceResult): RelanceResult {
+  const call = invoice.calls.find(entry =>
+    (result.callId !== undefined && entry.id === result.callId)
+    || (result.conversationId !== undefined && entry.conversationId === result.conversationId))
+  if (call?.answer === undefined || call.status !== 'en_cours') return result
+  return resultFromAnswer(call.answer, { callId: call.id, conversationId: result.conversationId ?? call.conversationId, summary: result.summary, transcript: result.transcript })
+}
+
+/**
+ * Note the debtor's answer on the call in progress, while the conversation goes on: the CRM line and the journal change now,
+ * the column when the call closes. A second note in the same call replaces the first (the debtor corrected a date).
+ * Returns undefined when no call of this invoice is in progress under these ids.
+ */
+export function noteLiveAnswer(invoice: Invoice, ref: { callId?: string; conversationId?: string }, answer: DebtorAnswer, now: number): Invoice | undefined {
+  const call = invoice.calls.find(entry => entry.status === 'en_cours'
+    && ((ref.callId !== undefined && entry.id === ref.callId) || (ref.conversationId !== undefined && entry.conversationId === ref.conversationId)))
+  if (call === undefined) return undefined
+  const corrected = call.answer !== undefined
+  // The tool omits the amount when the debtor pays the whole invoice; nothing may exceed the balance.
+  answer = settleAmounts(answer, remainingEur(invoice), parisDate(now))
+  const calls = invoice.calls.map(entry => (entry.id === call.id ? { ...entry, answer } : entry))
+  const line = describeAnswer(answer)
+  // A paid or handed-over invoice keeps its line, and so does a note that carries no answer (« sans suite », a callback
+  // without a time) while a promise is pending; the answer is still on the call.
+  const keepsLine = invoice.status === 'encaissee' || invoice.status === 'a_vous' || answer.outcome === 'sans_suite' || (answer.outcome === 'rappel' && answer.callbackAt === undefined && openPromise(invoice) !== undefined)
+  const knows = keepsLine ? invoice.knows : line
+  return logActivity({ ...invoice, calls, ...(answer.outcome !== 'sans_suite' ? { answer } : {}), knows }, {
+    kind: 'client',
+    actor: 'lea',
+    title: `${corrected ? 'Réponse corrigée' : 'Réponse notée'} en direct : ${line}`,
+    detail: answer.quote !== undefined ? `« ${answer.quote} »${answer.delayReason !== undefined ? ` · Cause du retard : ${answer.delayReason}` : ''}` : answer.delayReason,
+  }, now)
 }
 
 function unansweredStreak(calls: readonly RelanceCallRecord[]): number {
@@ -205,59 +313,106 @@ export function applyRelanceResult(invoice: Invoice, result: RelanceResult, now:
     summary: result.summary ?? existing?.summary,
     disputeReason: result.disputeReason,
     rightContact: result.rightContact,
+    answer: existing?.answer,
     transcript: result.transcript ?? existing?.transcript,
     error: result.error,
   }
-  const calls = existing === undefined ? [...invoice.calls, closed] : invoice.calls.map(call => (call.id === existing.id ? closed : call))
-  let next: Invoice = { ...invoice, calls }
   if (result.error !== undefined) {
-    return logActivity(next, { kind: 'appel', actor: 'lea', title: 'Appel échoué', detail: result.error }, now)
+    const calls = existing === undefined ? [...invoice.calls, closed] : invoice.calls.map(call => (call.id === existing.id ? closed : call))
+    return logActivity({ ...invoice, calls }, { kind: 'appel', actor: 'lea', title: 'Appel échoué', detail: result.error }, now)
   }
-  const meta = RELANCE_OUTCOME_META[result.outcome]
+  const reference = Date.parse(closed.startedAt)
+  const answer = settleAmounts(answerOf(result, Number.isNaN(reference) ? now : reference, now), remainingEur(invoice), parisDate(now))
+  closed.answer = answer
+  // The settled answer may correct the label (a « déjà réglé » dated ahead is a promise).
+  closed.outcome = answer.outcome
+  const calls = existing === undefined ? [...invoice.calls, closed] : invoice.calls.map(call => (call.id === existing.id ? closed : call))
+  // A call with no answer keeps the debtor's last real answer as the CRM's « Réponse du client ».
+  let next: Invoice = { ...invoice, calls, answer: answer.outcome === 'sans_suite' ? invoice.answer : answer }
+  const meta = RELANCE_OUTCOME_META[answer.outcome]
   const title = `Appel : ${meta.label.toLowerCase()}`
   // A late result (webhook after the invoice was paid, handed over or disputed) is logged, nothing more.
-  const frozen = frozenBy(invoice, result.outcome)
+  const frozen = frozenBy(invoice, answer.outcome)
   if (frozen !== undefined) return logActivity(next, { kind: 'appel', actor: 'lea', title, detail: result.summary !== undefined ? `${result.summary} ${frozen}` : frozen }, now)
   const dueAt = playbookStepAt(next, next.playbookIndex)
   if (consumeDueCallStep && PLAYBOOK[next.playbookIndex]?.kind === 'appel' && dueAt !== undefined && Date.parse(dueAt) <= now) {
     next = { ...next, playbookIndex: next.playbookIndex + 1 }
   }
   next = logActivity(next, { kind: 'appel', actor: 'lea', title, detail: result.summary }, now)
+  // A live note already logged the debtor's words; an answer read after the call logs them now.
+  if (existing?.answer === undefined && (answer.quote !== undefined || answer.delayReason !== undefined)) {
+    next = logActivity(next, {
+      kind: 'client',
+      actor: 'client',
+      title: 'Réponse du client',
+      detail: [answer.quote !== undefined ? `« ${answer.quote} »` : undefined, answer.delayReason !== undefined ? `Cause du retard : ${answer.delayReason}` : undefined].filter(Boolean).join(' · '),
+    }, now)
+  }
 
-  switch (result.outcome) {
-    case 'promesse': {
-      const date = result.promiseDate ?? parisDate(dayAt(iso, 5))
-      const promise: PaymentPromise = { id: newId('pr'), amountEur: result.promiseAmountEur ?? remainingEur(next), dueDate: date, status: 'attendue' }
+  switch (answer.outcome) {
+    case 'promesse':
+    case 'deja_regle': {
+      const claimed = answer.outcome === 'deja_regle'
+      const date = answer.promiseDate ?? (claimed ? parisDate(now) : parisDate(dayAt(iso, 5)))
+      const owed = remainingEur(next)
+      const second = answer.secondDate !== undefined && answer.secondAmountEur !== undefined ? { dueDate: answer.secondDate, amountEur: answer.secondAmountEur } : undefined
+      const fresh: PaymentPromise[] = [
+        // A payment said to have left already is checked from tomorrow on, whatever its date: the transfer may still be in flight.
+        { id: newId('pr'), amountEur: answer.promiseAmountEur ?? owed, dueDate: claimed ? parisDate(now) : date, status: 'attendue', ...(claimed ? { claimed: true } : {}) },
+        ...(second !== undefined ? [{ id: newId('pr'), amountEur: second.amountEur, dueDate: second.dueDate, status: 'attendue' as const }] : []),
+      ]
       // The new date replaces the pending one: broken if its date already passed, dropped otherwise.
       const promises = next.promises
         .filter(entry => entry.status !== 'attendue' || promiseOverdue(entry, now))
         .map(entry => (entry.status === 'attendue' ? { ...entry, status: 'rompue' as const } : entry))
-      next = { ...next, status: 'promesse', followUpAt: undefined, promises: [...promises, promise], knows: `${formatEur(promise.amountEur)} promis pour le ${formatDay(date)}` }
-      next = logActivity(next, { kind: 'promesse', actor: 'lea', title: `Promesse : ${formatEur(promise.amountEur)} le ${formatDay(date)}` }, now)
-      return addDraft(next, 'recap_promesse', now)
+      // A payment said to be made without a date stays without one in the CRM line, rather than reading as paid today.
+      const line = describeAnswer({ ...answer, promiseDate: claimed ? answer.promiseDate : date, promiseAmountEur: fresh[0]?.amountEur })
+      next = { ...next, status: 'promesse', followUpAt: undefined, promises: [...promises, ...fresh], knows: line }
+      next = logActivity(next, { kind: 'promesse', actor: 'lea', title: claimed ? `Déclaré réglé${answer.promiseDate !== undefined ? ` le ${formatDay(answer.promiseDate)}` : ''} : ${formatEur(fresh[0]?.amountEur ?? owed)} à vérifier` : `Promesse : ${fresh.map(entry => `${formatEur(entry.amountEur)} le ${formatDay(entry.dueDate)}`).join(', puis ')}` }, now)
+      return addDraft(next, claimed ? 'avis_virement' : 'recap_promesse', now)
     }
-    case 'litige':
+    case 'litige': {
       // A disputed invoice will not be paid on the promised date: the pending promise no longer holds.
-      next = { ...next, status: 'litige', followUpAt: undefined, promises: next.promises.filter(entry => entry.status !== 'attendue'), disputeReason: result.disputeReason ?? next.disputeReason, knows: result.disputeReason ?? 'Litige exprimé, motif à préciser' }
+      const reason = [answer.disputeReason, answer.missingDocument !== undefined ? `Pièce attendue : ${answer.missingDocument}` : undefined]
+        .filter((part): part is string => part !== undefined && part.trim() !== '')
+        .map(part => part.trim().replace(/[.\s]+$/u, ''))
+        .join('. ')
+      const disputeReason = reason !== '' ? reason : next.disputeReason
+      next = { ...next, status: 'litige', followUpAt: undefined, promises: next.promises.filter(entry => entry.status !== 'attendue'), disputeReason, knows: disputeReason ?? 'Litige exprimé, motif à préciser' }
       next = logActivity(next, { kind: 'litige', actor: 'lea', title: 'Litige qualifié', detail: next.disputeReason }, now)
       return addDraft(next, 'litige', now)
-    case 'renvoi':
+    }
+    case 'renvoi': {
       // An invoice the debtor never received cannot be paid on the promised date either.
-      next = { ...next, status: 'a_relancer', followUpAt: dayAt(iso, 3), promises: next.promises.filter(entry => entry.status !== 'attendue'), knows: result.rightContact !== undefined ? `Facture à renvoyer à ${result.rightContact}` : 'Facture jamais reçue, à renvoyer' }
-      return addDraft(next, 'renvoi', now)
+      const contact = answer.rightContact ?? emailFromTranscript(result.transcript)
+      if (contact !== undefined && answer.rightContact === undefined) next = { ...next, answer: { ...answer, rightContact: contact } }
+      next = { ...next, status: 'a_relancer', followUpAt: dayAt(iso, 3), promises: next.promises.filter(entry => entry.status !== 'attendue'), knows: contact !== undefined ? `Facture à renvoyer à ${contact}` : 'Facture jamais reçue, à renvoyer' }
+      const drafted = addDraft(next, 'renvoi', now)
+      // The resend goes to the address the debtor gave, when it is one.
+      const address = extractEmail(answer.rightContact) ?? emailFromTranscript(result.transcript)
+      if (address === undefined) return drafted
+      return { ...drafted, emails: drafted.emails.map((email, index) => (index === drafted.emails.length - 1 ? { ...email, to: address } : email)) }
+    }
     default: {
-      // No answer or a callback request does not cancel a promise still pending: its verification stays the next step.
-      if (openPromise(next) !== undefined) return { ...next, status: 'promesse', followUpAt: undefined }
+      // No answer or a callback request does not cancel a promise still pending: its verification stays scheduled,
+      // and a callback the debtor asked for is kept alongside it (the earlier of the two runs first).
+      const pending = openPromise(next)
+      if (pending !== undefined) {
+        const callback = answer.outcome === 'rappel' ? answer.callbackAt : undefined
+        const promiseLine = `${formatEur(pending.amountEur)} attendus le ${formatDay(pending.dueDate)}`
+        return { ...next, status: 'promesse', followUpAt: callback, knows: callback !== undefined ? `${describeAnswer(answer)} · ${promiseLine}` : `Promesse en cours : ${promiseLine}` }
+      }
       const streak = unansweredStreak(next.calls)
       if (streak >= 3) {
         next = { ...next, status: 'a_vous', followUpAt: undefined, knows: `${streak} appels sans date obtenue` }
         return logActivity(next, { kind: 'etape', actor: 'autopilote', title: 'Passage à votre équipe', detail: 'Trois appels sans date : Léa passe la main.' }, now)
       }
+      const callback = answer.outcome === 'rappel' ? answer.callbackAt ?? dayAt(iso, 1) : undefined
       return {
         ...next,
         status: 'appel',
-        followUpAt: result.outcome === 'rappel' ? dayAt(iso, 1) : undefined,
-        knows: result.outcome === 'rappel' ? 'Rappel demandé pour demain' : `${streak} appel${streak > 1 ? 's' : ''} sans réponse`,
+        followUpAt: callback,
+        knows: callback !== undefined ? describeAnswer({ ...answer, callbackAt: callback }) : `${streak} appel${streak > 1 ? 's' : ''} sans réponse`,
       }
     }
   }
@@ -289,12 +444,14 @@ export function breakPromise(invoice: Invoice, promiseId: string, now: number, a
   if (promise === undefined) return invoice
   const promises = invoice.promises.map(entry => (entry.id === promiseId ? { ...entry, status: 'rompue' as const } : entry))
   const broken = promises.filter(entry => entry.status === 'rompue').length
-  let next = logActivity({ ...invoice, promises }, { kind: 'promesse', actor, title: `Promesse non tenue : ${formatEur(promise.amountEur)} du ${formatDay(promise.dueDate)}` }, now)
+  // A payment the debtor said was already made and that the statement does not show is a missing transfer, not a late promise.
+  const title = promise.claimed === true ? `Virement déclaré introuvable : ${formatEur(promise.amountEur)}` : `Promesse non tenue : ${formatEur(promise.amountEur)} du ${formatDay(promise.dueDate)}`
+  let next = logActivity({ ...invoice, promises }, { kind: 'promesse', actor, title }, now)
   if (broken >= 2) {
     next = { ...next, status: 'a_vous', followUpAt: undefined, knows: `${broken} promesses non tenues` }
     return logActivity(next, { kind: 'etape', actor: 'autopilote', title: 'Passage à votre équipe', detail: 'Deux promesses non tenues : demander un acompte ou plafonner l’encours.' }, now)
   }
-  next = { ...next, status: 'appel', followUpAt: dayAt(new Date(now).toISOString(), 1, 9), knows: 'Promesse non tenue, rappel demain' }
+  next = { ...next, status: 'appel', followUpAt: dayAt(new Date(now).toISOString(), 1, 9), knows: promise.claimed === true ? 'Virement déclaré introuvable, rappel demain' : 'Promesse non tenue, rappel demain' }
   return addDraft(next, 'promesse_rompue', now)
 }
 
@@ -316,28 +473,8 @@ export function keepPromise(invoice: Invoice, promiseId: string, now: number, ac
   return { ...next, status: 'appel', followUpAt: dayAt(new Date(now).toISOString(), 1, 9), knows }
 }
 
-/** Map free text from the agent's data collection to a reminder outcome. */
-export function parseRelanceOutcome(value: unknown): RelanceOutcome {
-  if (typeof value !== 'string') return 'sans_suite'
-  const text = value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-  if (/promesse|promise|paiement|regle/.test(text)) return 'promesse'
-  if (/litige|conteste|dispute/.test(text)) return 'litige'
-  if (/renvoi|non recue|pas recue|resend/.test(text)) return 'renvoi'
-  if (/rappel|callback/.test(text)) return 'rappel'
-  return 'sans_suite'
-}
-
 /** "9 800", "9800,50 €", "9 800 euros" → 9800 or 9800.5; undefined when no number is found. */
-export function parseAmount(value: unknown): number | undefined {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value !== 'string') return undefined
-  const match = /(\d[\d\s.,]*)/u.exec(value)
-  if (match === null) return undefined
-  const compact = (match[1] ?? '').replace(/\s/gu, '')
-  const normalized = /,\d{1,2}$/.test(compact) ? compact.replace(/\./g, '').replace(',', '.') : compact.replace(/,/g, '')
-  const amount = Number(normalized)
-  return Number.isFinite(amount) && amount > 0 ? amount : undefined
-}
+export const parseAmount = parseSpokenAmount
 
 export function daysLate(invoice: Invoice, now: number): number {
   return daysSince(invoice.dueDate, now)

@@ -1,16 +1,17 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { jsonError, parseBody } from '@/core/http'
-import { applyRelanceResult } from '@/core/receivables'
+import { STAGE_META, applyRelanceResult } from '@/core/receivables'
 import { simulatedCall } from '@/core/simulation'
 import { getStore } from '@/core/store'
+import { RELANCE_OUTCOMES } from '@/core/types'
 import { workspaceNow } from '@/core/workspace'
 
 export const dynamic = 'force-dynamic'
 
 type Context = { params: Promise<{ id: string }> }
 
-const body = z.object({ outcome: z.enum(['promesse', 'litige', 'renvoi', 'rappel', 'sans_suite']).default('promesse') })
+const body = z.object({ outcome: z.enum(RELANCE_OUTCOMES).default('promesse') })
 
 /** Replay a finished reminder call without consuming minutes. */
 export async function POST(request: Request, { params }: Context) {
@@ -23,5 +24,5 @@ export async function POST(request: Request, { params }: Context) {
   const now = await workspaceNow(store)
   const updated = applyRelanceResult(invoice, simulatedCall(invoice, parsed.data.outcome, now), now)
   await store.saveInvoice(updated)
-  return NextResponse.json(updated)
+  return NextResponse.json({ ...updated, move: { from: STAGE_META[invoice.status].label, to: STAGE_META[updated.status].label, knows: updated.knows } })
 }

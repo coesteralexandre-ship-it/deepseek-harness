@@ -1,5 +1,6 @@
 import { DAY_MS } from './clock.ts'
-import { addDraft, applyRelanceResult, breakPromise, logActivity, markPaid, nextAction, openPromise, sendDraft } from './receivables.ts'
+import { formatDay, formatEur } from './format.ts'
+import { addDraft, applyRelanceResult, breakPromise, keepPromise, logActivity, nextAction, openPromise, sendDraft } from './receivables.ts'
 import { demoCallOutcome, demoPays, simulatedCall } from './simulation.ts'
 import type { Invoice, Settings } from './types.ts'
 
@@ -24,7 +25,10 @@ export function runDueAction(invoice: Invoice, now: number, mode: Settings['auto
     case 'appel': {
       const cleared = { ...step, followUpAt: undefined }
       if (mode === 'reel') {
-        return logActivity({ ...cleared, status: 'appel' }, { kind: 'appel', actor: 'autopilote', title: 'Appel à lancer', detail: `${action.label} : dans la file d’appels du jour.` }, now)
+        // A callback asked for while a promise is pending keeps the card in Promesse: the verification stays scheduled.
+        const pending = openPromise(cleared)
+        const queued = pending !== undefined ? { ...cleared, knows: `Rappel convenu à passer · ${formatEur(pending.amountEur)} attendus le ${formatDay(pending.dueDate)}` } : { ...cleared, status: 'appel' as const }
+        return logActivity(queued, { kind: 'appel', actor: 'autopilote', title: 'Appel à lancer', detail: `${action.label} : dans la file d’appels du jour.` }, now)
       }
       const attempt = invoice.calls.filter(call => call.status === 'termine').length
       const plan = demoCallOutcome(invoice, attempt)
@@ -34,7 +38,8 @@ export function runDueAction(invoice: Invoice, now: number, mode: Settings['auto
     case 'verification': {
       const promise = openPromise(invoice)
       if (promise === undefined || mode === 'reel') return invoice
-      return demoPays(invoice) ? markPaid(invoice, now, 'client') : breakPromise(invoice, promise.id, now, 'autopilote')
+      // Only the promise being checked is kept: a later instalment stays pending until its own date.
+      return demoPays(invoice) ? keepPromise(invoice, promise.id, now, 'client') : breakPromise(invoice, promise.id, now, 'autopilote')
     }
     default:
       return logActivity({ ...step, status: 'a_vous', knows: 'Séquence terminée sans règlement' }, { kind: 'etape', actor: 'autopilote', title: 'Passage à votre équipe', detail: 'Trente jours de relance sans règlement.' }, now)
