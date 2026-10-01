@@ -72,7 +72,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-export function RelanceBoard({ initial }: { initial: BoardView }) {
+export function RelanceBoard({ initial, resetAllowed = false }: { initial: BoardView; resetAllowed?: boolean }) {
   const router = useRouter()
   const [view, setView] = useState(initial)
   const [busy, setBusy] = useState<string | null>(null)
@@ -137,6 +137,7 @@ export function RelanceBoard({ initial }: { initial: BoardView }) {
   const advance = (days: number) => run(`advance-${days}`, async () => apply((await send('/api/autopilot', 'POST', { action: 'advance', days })) as BoardView))
   const setMode = (autopilot: 'demo' | 'reel') => run('mode', async () => apply((await send('/api/autopilot', 'POST', { action: 'mode', autopilot })) as BoardView))
   const reset = () => run('reset', async () => {
+    if (!window.confirm('Tout remettre à zéro ? Prospects, factures, appels et promesses seront remplacés par le jeu de départ.')) return
     await send('/api/reset', 'POST', {})
     apply((await (await fetch('/api/autopilot', { cache: 'no-store' })).json()) as BoardView)
   })
@@ -234,7 +235,7 @@ export function RelanceBoard({ initial }: { initial: BoardView }) {
           <button type="button" className={`btn btn-sm ${playing ? 'btn-ink' : 'btn-primary'}`} disabled={(busy !== null && !playing) || onCall} onClick={replay}>
             {playing ? '❚❚ Pause' : '▶ Rejouer 14 jours'}
           </button>
-          <button type="button" className="btn btn-sm btn-ghost" disabled={locked} onClick={reset}>Remettre à zéro</button>
+          {resetAllowed && <button type="button" className="btn btn-sm btn-ghost" disabled={locked} onClick={reset}>Remettre à zéro</button>}
         </div>
       </section>
 

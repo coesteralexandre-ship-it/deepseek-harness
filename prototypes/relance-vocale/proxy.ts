@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { ACCESS_COOKIE, accessDigest, isPublicPath } from '@/core/access'
+import { ACCESS_COOKIE, accessDigest, isPublicPath, sameDigest } from '@/core/access'
 
 /** Gate the internal pages and APIs behind `APP_ACCESS_CODE`; without the variable everything stays open. */
 export async function proxy(request: NextRequest) {
@@ -7,10 +7,11 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   if (code === undefined || code === '' || isPublicPath(pathname)) return NextResponse.next()
   const expected = await accessDigest(code)
-  if (request.cookies.get(ACCESS_COOKIE)?.value === expected) return NextResponse.next()
+  if (sameDigest(request.cookies.get(ACCESS_COOKIE)?.value ?? '', expected)) return NextResponse.next()
   if (pathname.startsWith('/api/')) {
     // Ingestion tools authenticate with the code as a bearer token.
-    if (request.headers.get('authorization') === `Bearer ${code}`) return NextResponse.next()
+    const bearer = request.headers.get('authorization') ?? ''
+    if (bearer.startsWith('Bearer ') && sameDigest(await accessDigest(bearer.slice(7)), expected)) return NextResponse.next()
     return NextResponse.json({ error: 'Accès réservé : code requis.' }, { status: 401 })
   }
   const login = new URL('/connexion', request.url)

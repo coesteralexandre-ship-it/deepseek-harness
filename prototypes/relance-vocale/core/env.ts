@@ -54,6 +54,11 @@ export function appUrl(): string {
   return read('NEXT_PUBLIC_APP_URL') ?? (vercelHost !== undefined ? `https://${vercelHost}` : 'http://localhost:3000')
 }
 
+/** Whether « Réinitialiser » may wipe the data: always in development, in production only with `ALLOW_RESET=1`. */
+export function resetAllowed(): boolean {
+  return process.env.NODE_ENV !== 'production' || read('ALLOW_RESET') === '1'
+}
+
 /** Shared access code of the internal pages; unset leaves them open (local development). */
 export function accessCode(): string | undefined {
   return read('APP_ACCESS_CODE')

@@ -190,3 +190,14 @@ Chaque fiche prospect a un bloc « Coordonnées et équipe » : site de l'agence
 - Sources : le site de l'agence lu directement (gratuit), Exa `category: people` pour LinkedIn (~0,007 $ la recherche), Serper pour la fiche Google Maps quand le site ne donne aucun numéro (1 crédit).
 - Garde-fous : un site n'est retenu que si son adresse porte le nom de l'agence ; un numéro lu ailleurs que sur ce site ne vient que d'un annuaire téléphonique, doit avoir l'indicatif de la région du siège, et n'est jamais un mobile. Aucun mobile personnel n'est recherché : Léa n'appelle pas une agence sans sa demande.
 - En lot : `node --env-file=.env.local --experimental-strip-types scripts/enrich-prospects.ts [--serper N]` (tout), puis `scripts/enrich-fix.ts` (repasse sur les sites douteux et les fiches sans numéro). Les résultats sont écrits dans `core/data/prospects-reels.json`, donc ils survivent sans base de données.
+
+## Garde-fous en production
+
+- **Remise à zéro** : `POST /api/reset` répond 403 et les boutons disparaissent, sauf `ALLOW_RESET=1`. Une confirmation est demandée dans tous les cas.
+- **Code d'accès** : dix essais par quart d'heure et par adresse sur `/api/auth` ; comparaison à temps constant des empreintes (`core/access.ts`).
+- **Pages publiques** (`/l/<jeton>`) : six conversations par heure et par lien, douze par visiteur ; trois synthèses vocales par jour et par lien (`core/ratelimit.ts`, compteurs par instance).
+- **Enrichissement** : plafond par jour (`ENRICH_DAILY_USD`, 5 $) et par prospect (0,60 $) ; le radar accepte six balayages par heure.
+- **Scans du QR code** : enregistrés par le navigateur une fois la page ouverte (`/api/l/<jeton>/visite`), jamais au rendu, et jamais pour un robot d'aperçu (WhatsApp, Outlook, Slack…).
+- **Autopilote** : un espace neuf démarre en mode réel en production (brouillons et file d'appels à valider, rien ne part), en démo en développement ; `AUTOPILOT_DEFAULT` force l'un ou l'autre. Le cron du matin exige `CRON_SECRET`.
+- **Radar** : l'annuaire est interrogé sur 78.20Z puis 78.20G (code NAF 2025, valide à partir du 1er janvier 2027) ; un code que la nomenclature refuse est simplement passé.
+

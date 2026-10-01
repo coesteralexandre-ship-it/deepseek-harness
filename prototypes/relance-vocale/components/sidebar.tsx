@@ -53,14 +53,17 @@ interface Props {
   voiceReady: boolean
   /** An access code protects the app: show the sign-out action. */
   gated: boolean
+  /** The reset wipes everything: shown only where it is allowed (development, or ALLOW_RESET=1). */
+  resetAllowed: boolean
 }
 
-export function Sidebar({ storeKind, voiceReady, gated }: Props) {
+export function Sidebar({ storeKind, voiceReady, gated, resetAllowed }: Props) {
   const pathname = usePathname()
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
 
   async function reset() {
+    if (!window.confirm('Tout remettre à zéro ? Prospects, factures, appels et promesses seront remplacés par le jeu de départ.')) return
     setBusy('reset')
     try {
       await fetch('/api/reset', { method: 'POST' })
@@ -116,7 +119,7 @@ export function Sidebar({ storeKind, voiceReady, gated }: Props) {
           </div>
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-semibold uppercase tracking-[0.12em]">
-          <button type="button" onClick={reset} disabled={busy !== null} className="text-[#8f98b8] hover:text-white disabled:opacity-40">{busy === 'reset' ? 'Remise à zéro…' : 'Réinitialiser'}</button>
+          {resetAllowed && <button type="button" onClick={reset} disabled={busy !== null} className="text-[#8f98b8] hover:text-white disabled:opacity-40">{busy === 'reset' ? 'Remise à zéro…' : 'Réinitialiser'}</button>}
           {gated && <button type="button" onClick={signOut} disabled={busy !== null} className="text-[#8f98b8] hover:text-white disabled:opacity-40">Se déconnecter</button>}
         </div>
       </div>

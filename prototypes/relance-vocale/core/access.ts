@@ -8,6 +8,14 @@ export async function accessDigest(code: string): Promise<string> {
   return [...new Uint8Array(bytes)].map(byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
+/** Constant-time equality of two digests, so a mismatch takes as long whatever the first differing byte. */
+export function sameDigest(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
 /** Paths anyone may reach: the prospect's and the debtor's pages, their APIs, and machine callbacks (the cron checks its own secret). */
 const PUBLIC_PREFIXES = ['/l/', '/f/', '/api/l/', '/api/f/', '/api/webhooks/', '/api/tools/', '/api/cron/', '/api/auth', '/connexion']
 

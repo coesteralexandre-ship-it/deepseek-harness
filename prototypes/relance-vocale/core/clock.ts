@@ -5,7 +5,17 @@ export const DAY_MS = 86_400_000
 /** The demo agency; the Settings page replaces it. */
 export const DEFAULT_AGENCY: Agency = { company: 'Flexo RH', city: 'Lyon', team: 'Service comptabilité clients', weeklyPayrollEur: 58_000 }
 
-export const DEFAULT_SETTINGS: Settings = { clockOffsetDays: 0, autopilot: 'demo', agency: DEFAULT_AGENCY }
+/**
+ * Autopilot mode a fresh workspace starts in: `reel` in production (nothing leaves without a person), `demo` in
+ * development; `AUTOPILOT_DEFAULT` overrides either.
+ */
+function defaultAutopilot(): Settings['autopilot'] {
+  const wanted = process.env.AUTOPILOT_DEFAULT?.trim()
+  if (wanted === 'demo' || wanted === 'reel') return wanted
+  return process.env.NODE_ENV === 'production' ? 'reel' : 'demo'
+}
+
+export const DEFAULT_SETTINGS: Settings = { clockOffsetDays: 0, autopilot: defaultAutopilot(), agency: DEFAULT_AGENCY }
 
 /** Current time of the workspace: real time plus the demo offset. */
 export function appNow(settings: Settings): number {

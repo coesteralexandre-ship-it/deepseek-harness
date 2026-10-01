@@ -1,8 +1,8 @@
 import { notFound } from 'next/navigation'
+import { LandingVisit } from '@/components/landing-visit'
 import { PublicCall } from '@/components/public-call'
 import { AGENT_NAME, PRODUCT_NAME, dynamicVariablesFor } from '@/core/agent-prompt'
 import { callerName, elevenLabsEnv, publicCallbackEnabled } from '@/core/env'
-import { LANDING_VISIT_TITLE, recordLandingSignal } from '@/core/landing'
 import { getStore } from '@/core/store'
 import { ttsConfigured } from '@/core/tts'
 
@@ -12,10 +12,10 @@ export const dynamic = 'force-dynamic'
 export default async function LandingPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
   const store = getStore()
-  const found = await store.findProspectByToken(token)
-  if (found === undefined) notFound()
+  const prospect = await store.findProspectByToken(token)
+  if (prospect === undefined) notFound()
+  // The visit is logged by the browser (LandingVisit), not here: link previewers render this page without a person.
   const signals = await store.listSignals()
-  const prospect = await recordLandingSignal(store, found, signals, LANDING_VISIT_TITLE, 'Ouverture de la page publique liée au QR code de la lettre ou au message vocal.')
   const own = signals.filter(signal => signal.prospectId === prospect.id)
   const env = elevenLabsEnv()
   const browserReady = env.apiKey !== undefined && env.agentId !== undefined
@@ -24,6 +24,7 @@ export default async function LandingPage({ params }: { params: Promise<{ token:
 
   return (
     <div className="py-10">
+      <LandingVisit token={token} />
       <div className="animate-rise max-w-2xl">
         <p className="eyebrow">{`${prospect.contact.firstName} ${prospect.contact.lastName}`.trim() !== '' ? `Pour ${prospect.contact.firstName} ${prospect.contact.lastName} · ` : 'Pour '}{prospect.company}</p>
         <h1 className="font-display mt-4 text-[36px] leading-[1.04] sm:text-[50px]">

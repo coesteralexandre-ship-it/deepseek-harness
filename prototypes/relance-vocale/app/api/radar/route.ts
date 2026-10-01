@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { errorResponse, jsonError, parseBody } from '@/core/http'
+import { allow, tooMany } from '@/core/ratelimit'
 import { RadarSourceError, prospectFromRadar, scanDepartement } from '@/core/radar'
 import { getStore } from '@/core/store'
 import { workspaceNow } from '@/core/workspace'
@@ -21,6 +22,8 @@ const body = z.object({
 export async function POST(request: Request) {
   const parsed = await parseBody(request, body)
   if (!parsed.ok) return parsed.response
+  // A scan is hundreds of public requests: a handful per hour is plenty.
+  if (!allow('radar', 6, 3_600_000)) return tooMany('balayages', 3600)
   const store = getStore()
   try {
     const result = await scanDepartement(parsed.data)

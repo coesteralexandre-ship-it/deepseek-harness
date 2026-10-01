@@ -91,12 +91,31 @@ function departementOf(postcode: string): string {
   return postcode.slice(0, 2)
 }
 
+/**
+ * NAF codes of staffing agencies: 78.20Z today, 78.20G once the NAF 2025 applies (1 January 2027). The directory
+ * accepts only the codes of the current nomenclature, so a refused code is skipped rather than failing the scan.
+ */
+const NAF_INTERIM = ['78.20Z', '78.20G']
+
 /** Active small and mid-sized agencies (PME) of the département from the public company directory, head office in the département. */
 async function agencies(request: RadarRequest): Promise<RadarCompany[]> {
   const found = new Map<string, RadarCompany>()
+  for (const naf of NAF_INTERIM) {
+    try {
+      await agenciesOfNaf(request, naf, found)
+    } catch (error) {
+      // The nomenclature refuses the other code: not an outage, the other code covers the market.
+      if (error instanceof RadarSourceError && /non valide/u.test(error.message)) continue
+      throw error
+    }
+  }
+  return [...found.values()]
+}
+
+async function agenciesOfNaf(request: RadarRequest, naf: string, found: Map<string, RadarCompany>): Promise<void> {
   // About half the PME returned have their head office elsewhere, so read up to three times the pages the target needs.
   for (let page = 1; found.size < request.maxCompanies && page <= Math.ceil(request.maxCompanies / 25) * 3; page += 1) {
-    const params = new URLSearchParams({ activite_principale: '78.20Z', etat_administratif: 'A', categorie_entreprise: 'PME', departement: request.departement, per_page: '25', page: String(page) })
+    const params = new URLSearchParams({ activite_principale: naf, etat_administratif: 'A', categorie_entreprise: 'PME', departement: request.departement, per_page: '25', page: String(page) })
     const data = await getJson(`${RECHERCHE}?${params}`) as { results?: RechercheResult[]; total_pages?: number }
     for (const result of data.results ?? []) {
       const postcode = result.siege?.code_postal ?? ''
@@ -118,7 +137,6 @@ async function agencies(request: RadarRequest): Promise<RadarCompany[]> {
     if (page >= (data.total_pages ?? 1)) break
     await sleep(160) // the directory asks for at most 7 requests per second
   }
-  return [...found.values()]
 }
 
 /** Customer-credit days of each SIREN's newest filing from the public INPI ratios, 40 SIREN per request; dropped when older than `minYear` or implausible. */
