@@ -21,7 +21,9 @@ export function formatDateTime(iso: string): string {
   return new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeStyle: 'short', timeZone: BUSINESS_TZ }).format(new Date(time))
 }
 
+/** Thousands of euros: « 796 k€ », and « 27,5 M€ » from a million on. */
 export function formatKeur(value: number): string {
+  if (Math.abs(value) >= 1000) return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 }).format(value / 1000)} M€`
   return `${new Intl.NumberFormat('fr-FR').format(value)} k€`
 }
 

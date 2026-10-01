@@ -171,3 +171,22 @@ Le dossier n'appartient pas au workspace pnpm du dépôt : lint, typecheck et te
 - Le mode mémoire perd les données à chaque redémarrage ; sur Vercel, ajoutez Upstash avant d'utiliser le webhook, le QR code ou les URL audio publiques.
 - lemlist et WhatsApp : les appels API suivent leur documentation actuelle mais n'ont pas été exercés avec de vrais comptes dans ce dépôt ; l'erreur renvoyée par l'API est affichée telle quelle dans le panneau.
 - Les appels à froid par IA sont encadrés : information sur la nature IA dès le premier message (déjà dans le prompt, la lettre et la note vocale), respect de l'opposition, horaires B2B, conservation limitée des transcriptions. Voir la section conformité de [BRAINSTORM.md](./BRAINSTORM.md).
+
+## Base de prospection réelle
+
+Les pages Prospection (pipeline, signaux, fiches, lettres) partent d'agences d'intérim réelles, plus d'exemples fictifs. `core/data/prospects-reels.json` est généré par :
+
+```
+node --experimental-strip-types scripts/import-signaux.ts ../../../encaisse/data/signaux/interim --max 40
+```
+
+Le script lit un run du détecteur de signaux d'Encaisse (`chat/encaisse/signaux.py --niche interim` : ratios INPI, offres HelloWork, BODACC, BOAMP), garde les agences indépendantes notées 29 ou plus, une fiche par dirigeant (les sociétés d'un même groupe sont citées dans les notes), et cherche dans l'annuaire public des entreprises l'adresse du siège et le représentant légal, en remontant jusqu'à deux holdings. Chaque signal porte le lien de sa source. Aucun téléphone ni email n'est inventé : l'annuaire n'en publie pas. Le premier contact passe par courrier avec QR code ; Léa n'appelle une agence que si elle le demande (L34-5 CPCE). Pour rafraîchir, relancer le run d'Encaisse puis ce script.
+
+
+### Enrichissement : site, numéros, LinkedIn, équipe
+
+Chaque fiche prospect a un bloc « Coordonnées et équipe » : site de l'agence, numéros et emails qu'elle publie, profil LinkedIn du dirigeant, page LinkedIn de la société, et la carto de l'équipe (personnes qui déclarent un poste actuel dans la société sur LinkedIn, rangées Finance, Direction, Agences, RH, avec le repère « même ville »). Deux boutons relancent la recherche (`POST /api/prospects/[id]/enrich`, `what: contacts | equipe`). Le code est dans `core/enrich.ts`.
+
+- Sources : le site de l'agence lu directement (gratuit), Exa `category: people` pour LinkedIn (~0,007 $ la recherche), Serper pour la fiche Google Maps quand le site ne donne aucun numéro (1 crédit).
+- Garde-fous : un site n'est retenu que si son adresse porte le nom de l'agence ; un numéro lu ailleurs que sur ce site ne vient que d'un annuaire téléphonique, doit avoir l'indicatif de la région du siège, et n'est jamais un mobile. Aucun mobile personnel n'est recherché : Léa n'appelle pas une agence sans sa demande.
+- En lot : `node --env-file=.env.local --experimental-strip-types scripts/enrich-prospects.ts [--serper N]` (tout), puis `scripts/enrich-fix.ts` (repasse sur les sites douteux et les fiches sans numéro). Les résultats sont écrits dans `core/data/prospects-reels.json`, donc ils survivent sans base de données.

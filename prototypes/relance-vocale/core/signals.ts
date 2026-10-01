@@ -10,9 +10,10 @@ export interface SourceMeta {
 
 export const SOURCE_META: Record<SignalSource, SourceMeta> = {
   linkedin: { label: 'LinkedIn', glyph: 'in', how: 'Posts et commentaires du dirigeant ou du DAF (mots-clés : impayés, BFR, retard de paiement, affacturage)' },
-  offre_emploi: { label: 'Offre d’emploi', glyph: 'job', how: 'Annonces « chargé de recouvrement », « credit manager », « comptable clients » (Indeed, WTTJ, APEC)' },
-  pappers: { label: 'Comptes publiés', glyph: '€', how: 'Ratios INPI publics : délai client (crédit clients en jours) au-dessus de la médiane des agences du département' },
-  bodacc: { label: 'BODACC', glyph: 'jo', how: 'Un client de l’agence entre en sauvegarde ou redressement : ses factures deviennent douteuses' },
+  offre_emploi: { label: 'Offre d’emploi', glyph: 'job', how: 'Annonces HelloWork « chargé de recouvrement », « comptable clients », « assistant facturation », « credit manager » de moins de 45 jours' },
+  pappers: { label: 'Comptes publiés', glyph: '€', how: 'Ratios INPI publics : délai client au-dessus de la médiane des agences, délai en hausse, fournisseurs payés plus tard, BFR tendu' },
+  bodacc: { label: 'BODACC', glyph: 'jo', how: 'Procédures collectives en hausse dans le département, dans les secteurs qui emploient des intérimaires' },
+  marches: { label: 'Marchés publics', glyph: 'bo', how: 'Attributions BOAMP sur douze mois : des payeurs publics aux délais longs' },
   presse: { label: 'Presse', glyph: 'news', how: 'Ouverture d’agences, levée, croissance rapide : le BFR se tend avec le volume' },
   avis: { label: 'Avis', glyph: '★', how: 'Avis Google / Indeed d’intérimaires citant des paies en retard : symptôme de trésorerie' },
   inbound: { label: 'Inbound', glyph: '↓', how: 'Téléchargement d’un guide, inscription webinaire, visite de la page tarifs' },
@@ -29,11 +30,11 @@ export function recencyFactor(detectedAt: string, now = Date.now()): number {
   return 0.4
 }
 
-/** 0–100 heat score from the non-ignored signals of one prospect. */
+/** 0–100 heat score from the non-ignored signals of one prospect: 6 points per weight unit, so it takes several strong, recent signals to reach 100. */
 export function scoreSignals(signals: readonly Signal[], now = Date.now()): number {
   const raw = signals
     .filter(signal => signal.status !== 'ignore')
-    .reduce((sum, signal) => sum + signal.weight * 20 * recencyFactor(signal.detectedAt, now), 0)
+    .reduce((sum, signal) => sum + signal.weight * 6 * recencyFactor(signal.detectedAt, now), 0)
   return Math.min(100, Math.round(raw))
 }
 

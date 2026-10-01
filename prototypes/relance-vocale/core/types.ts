@@ -5,7 +5,7 @@ export const STAGES = ['nouveau', 'a_appeler', 'appel_en_cours', 'a_rappeler', '
 export type Stage = (typeof STAGES)[number]
 
 /** Where a signal was detected. */
-export const SIGNAL_SOURCES = ['linkedin', 'offre_emploi', 'pappers', 'bodacc', 'presse', 'avis', 'inbound', 'recommandation'] as const
+export const SIGNAL_SOURCES = ['linkedin', 'offre_emploi', 'pappers', 'bodacc', 'marches', 'presse', 'avis', 'inbound', 'recommandation'] as const
 export type SignalSource = (typeof SIGNAL_SOURCES)[number]
 
 export type SignalStatus = 'nouveau' | 'qualifie' | 'ignore'
@@ -60,6 +60,49 @@ export interface Contact {
   email?: string
 }
 
+/** A way to reach a company, with where it was read. */
+export interface ContactPoint {
+  value: string
+  /** What it is: « Standard (site) », « Agence de Lyon (Google Maps) », « Contact (site) ». */
+  label: string
+  /** Page it was read on. */
+  url?: string
+}
+
+/** Groups of the team map, in the order a reminder product cares about them. */
+export type TeamGroup = 'finance' | 'direction' | 'agence' | 'rh' | 'autre'
+
+/** One person of the company found on LinkedIn by the team map. */
+export interface TeamMember {
+  name: string
+  /** Headline or current role as the profile states it. */
+  title: string
+  location?: string
+  /** « Jan 2024 » when the profile dates the current role. */
+  since?: string
+  linkedin: string
+  group: TeamGroup
+  /** Based in the prospect's town: its own team rather than another branch of the network. */
+  local?: boolean
+}
+
+/** What the enrichment found about a prospect from its website, LinkedIn (Exa) and Google (Serper). */
+export interface Enrichment {
+  website?: string
+  /** Company switchboard and agency lines: published business numbers, never personal mobiles. */
+  phones: ContactPoint[]
+  emails: ContactPoint[]
+  linkedinPerson?: { url: string; headline?: string; location?: string }
+  linkedinCompany?: string
+  team?: TeamMember[]
+  teamMappedAt?: string
+  enrichedAt: string
+  /** Spent on paid APIs for this prospect, in dollars. */
+  costUsd: number
+  /** What could not be found, in French. */
+  gaps: string[]
+}
+
 /** A staffing agency in the pipeline. */
 export interface Prospect {
   id: string
@@ -67,6 +110,8 @@ export interface Prospect {
   siren?: string
   company: string
   city: string
+  /** Head office postal address from the public company directory, for the letter. */
+  address?: string
   /** Free-text size line shown on cards. */
   headcount: string
   contact: Contact
@@ -82,6 +127,8 @@ export interface Prospect {
   /** Voice-note script saved from the outreach panel; rebuilt from signals when absent. */
   voiceScript?: string
   notes?: string
+  /** Website, numbers, LinkedIn and team found by the enrichment. */
+  enrichment?: Enrichment
   nextCallAt?: string
   calls: CallRecord[]
   createdAt: string

@@ -21,7 +21,7 @@ export function ProspectCard({ prospect, index = 0 }: { prospect: ProspectView; 
       </h3>
       <p className="mt-0.5 text-[12px] text-faint">{prospect.city} · {prospect.headcount}</p>
       <p className="mt-2 text-[13px] text-ink-2">
-        {prospect.contact.firstName} {prospect.contact.lastName} <span className="text-faint">· {prospect.contact.role}</span>
+        {`${prospect.contact.firstName} ${prospect.contact.lastName}`.trim() || 'Dirigeant non publié'} <span className="text-faint">· {prospect.contact.role}</span>
       </p>
       {top !== undefined && (
         <div className="mt-3 rounded-lg border border-line bg-sunk/70 p-2.5">
@@ -30,7 +30,7 @@ export function ProspectCard({ prospect, index = 0 }: { prospect: ProspectView; 
         </div>
       )}
       <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[0.1em] text-faint">
-        <span className="tabular whitespace-nowrap">{prospect.estimatedUnpaidKeur !== undefined ? `${formatKeur(prospect.estimatedUnpaidKeur)} en retard` : `${prospect.signals.length} signal${prospect.signals.length > 1 ? 'x' : ''}`}</span>
+        <span className="tabular whitespace-nowrap">{prospect.estimatedUnpaidKeur !== undefined ? `≈ ${formatKeur(prospect.estimatedUnpaidKeur)} en retard` : `${prospect.signals.length} ${prospect.signals.length > 1 ? 'signaux' : 'signal'}`}</span>
         <span className="whitespace-nowrap">{prospect.calls.length > 0 ? `${prospect.calls.length} appel${prospect.calls.length > 1 ? 's' : ''}` : relativeDay(prospect.updatedAt)}</span>
       </div>
     </article>

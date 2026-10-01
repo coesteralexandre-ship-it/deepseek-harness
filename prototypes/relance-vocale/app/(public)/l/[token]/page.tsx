@@ -25,7 +25,7 @@ export default async function LandingPage({ params }: { params: Promise<{ token:
   return (
     <div className="py-10">
       <div className="animate-rise max-w-2xl">
-        <p className="eyebrow">Pour {prospect.contact.firstName} {prospect.contact.lastName} · {prospect.company}</p>
+        <p className="eyebrow">{`${prospect.contact.firstName} ${prospect.contact.lastName}`.trim() !== '' ? `Pour ${prospect.contact.firstName} ${prospect.contact.lastName} · ` : 'Pour '}{prospect.company}</p>
         <h1 className="font-display mt-4 text-[36px] leading-[1.04] sm:text-[50px]">
           Deux minutes pour entendre ce que <span className="accent">vos clients entendraient.</span>
         </h1>

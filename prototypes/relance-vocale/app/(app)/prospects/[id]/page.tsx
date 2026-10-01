@@ -1,12 +1,14 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { OutreachPanel } from '@/components/outreach-panel'
+import { EnrichPanel } from '@/components/enrich-panel'
 import { Pill } from '@/components/pill'
 import { SourceChip, WeightDots } from '@/components/source-chip'
 import { StageSelect } from '@/components/stage-select'
 import { Transcript } from '@/components/transcript'
 import { VoiceConsole } from '@/components/voice-console'
 import { AGENT_NAME, dynamicVariablesFor } from '@/core/agent-prompt'
+import { enrichKeys } from '@/core/enrich'
 import { elevenLabsEnv } from '@/core/env'
 import { formatDateTime, formatKeur, formatPhone, relativeDay } from '@/core/format'
 import { outreachCapabilities, outreachUrls, voiceScriptFor } from '@/core/outreach'
@@ -38,6 +40,8 @@ export default async function ProspectPage({ params }: { params: Promise<{ id: s
   const stage = STAGE_META[view.stage]
   const calls = [...view.calls].reverse()
   const urls = outreachUrls(prospect)
+  const fullName = `${view.contact.firstName} ${view.contact.lastName}`.trim()
+  const callee = view.contact.firstName !== '' ? view.contact.firstName : 'la direction'
   const [mp3, ogg] = await Promise.all([store.getAudio(prospect.id, 'mp3'), store.getAudio(prospect.id, 'ogg')])
 
   return (
@@ -49,13 +53,19 @@ export default async function ProspectPage({ params }: { params: Promise<{ id: s
           <Pill tone={stage.tone}>{stage.label}</Pill>
         </div>
         <p className="mt-2 text-[14px] text-muted">{view.city} · {view.headcount}</p>
+        {(view.address !== undefined || view.siren !== undefined) && (
+          <p className="mt-1 text-[13px] text-muted">
+            {view.address}
+            {view.siren !== undefined && <> · <a href={`https://annuaire-entreprises.data.gouv.fr/entreprise/${view.siren}`} target="_blank" rel="noreferrer" className="font-mono text-[12px] text-blue hover:underline">SIREN {view.siren} ↗</a></>}
+          </p>
+        )}
 
         <dl className="mt-7 grid gap-3 sm:grid-cols-3">
           <div className="card p-4">
             <dt className="label">Contact</dt>
-            <dd className="mt-2 text-[14.5px] font-semibold text-ink">{view.contact.firstName} {view.contact.lastName}</dd>
+            <dd className="mt-2 text-[14.5px] font-semibold text-ink">{fullName !== '' ? fullName : 'Dirigeant non publié'}</dd>
             <dd className="text-[13px] text-muted">{view.contact.role}</dd>
-            <dd className="tabular mt-1 font-mono text-[12px] text-muted">{formatPhone(view.contact.phone)}</dd>
+            <dd className="tabular mt-1 font-mono text-[12px] text-muted">{view.contact.phone !== '' ? formatPhone(view.contact.phone) : 'Numéro non publié'}</dd>
           </div>
           <div className="card p-4">
             <dt className="label">Score</dt>
@@ -63,7 +73,7 @@ export default async function ProspectPage({ params }: { params: Promise<{ id: s
             <dd className="mt-3 h-1.5 overflow-hidden rounded-full bg-line"><span className="block h-full rounded-full bg-gradient-to-r from-blue to-fuchsia" style={{ width: `${view.score}%` }} /></dd>
           </div>
           <div className="card p-4">
-            <dt className="label">Impayés estimés</dt>
+            <dt className="label" title="Créances clients au-delà du délai légal de 60 jours, estimées sur les comptes publiés : CA × (délai client − 60) / 365">Au-delà de 60 j (estimé)</dt>
             <dd className="font-display tabular mt-2 text-[30px] leading-none">{view.estimatedUnpaidKeur !== undefined ? formatKeur(view.estimatedUnpaidKeur) : '—'}</dd>
           </div>
         </dl>
@@ -85,10 +95,13 @@ export default async function ProspectPage({ params }: { params: Promise<{ id: s
                 </div>
                 <p className="mt-2 text-[15px] font-medium leading-snug text-ink">{signal.title}</p>
                 {signal.excerpt !== '' && <p className="mt-1 text-[13px] leading-relaxed text-muted">{signal.excerpt}</p>}
+                {signal.url !== undefined && <a href={signal.url} target="_blank" rel="noreferrer" className="mt-1.5 inline-block text-[12.5px] font-semibold text-blue hover:underline">Voir la source ↗</a>}
               </li>
             ))}
           </ul>
         </section>
+
+        <EnrichPanel prospectId={prospect.id} enrichment={prospect.enrichment} ready={enrichKeys().exa !== undefined} />
 
         <section className="mt-8">
           <p className="eyebrow">Appels · {calls.length}</p>
@@ -128,9 +141,9 @@ export default async function ProspectPage({ params }: { params: Promise<{ id: s
         <VoiceConsole
           kind="prospect"
           id={view.id}
-          title={`Appeler ${view.contact.firstName}`}
-          roleHint={`Vous jouez ${view.contact.firstName} : ${AGENT_NAME} vous appelle avec les signaux de ${view.company} et tente de prendre rendez-vous.`}
-          userName={view.contact.firstName}
+          title={`Appeler ${callee}`}
+          roleHint={`Vous jouez ${fullName !== '' ? fullName : 'la direction'} : ${AGENT_NAME} vous appelle avec les signaux de ${view.company} et tente de prendre rendez-vous.`}
+          userName={callee}
           phone={view.contact.phone}
           browserReady={browserReady}
           phoneReady={phoneReady}
