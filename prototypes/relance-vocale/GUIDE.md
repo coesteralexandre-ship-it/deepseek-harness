@@ -208,3 +208,28 @@ Chaque fiche prospect a un bloc « Coordonnées et équipe » : site de l'agence
 - **Historique** de la fiche : changements d'étape, tâches, opposition, notice envoyée (`Prospect.history`).
 - **« Ne plus contacter »** (`POST /api/prospects/[id]/contact`, bloc « Contact et données ») : l'opposition, avec son motif et sa date, passe la fiche en « Pas intéressé » et bloque l'appel, lemlist et WhatsApp (`core/contact.ts`, `contactBlock`) ; elle se lève avec un motif. Le bloc affiche l'origine des données (`recordOf`) et la date d'envoi de l'information prévue par l'article 14 du RGPD, que la lettre contient.
 
+## Veille : dix signaux qui se mettent à jour seuls
+
+Chaque matin de semaine (cron Vercel `/api/cron/veille` à 5 h 30 UTC, `CRON_SECRET` en Authorization), la veille relit les sources publiques pour chaque prospect qui a un SIREN et n'est ni perdu ni en opposition. Chaque fait nouveau devient un signal ; un identifiant stable (prospect + source + titre) fait qu'un second passage n'écrit rien. Le bouton « Lancer la veille maintenant » de Réglages fait la même chose à la demande (`POST /api/veille`, 4 passages par heure), et `pnpm veille` la joue en local sur la base de prospects réels (`--twice` vérifie qu'un second passage ne crée rien, `--sources bodacc,inpi` limite les sources, `--paid` ajoute Exa et SerpApi).
+
+Les dix signaux et leurs modules (`core/veille/`) :
+
+| # | Signal | Module | Source | Clé |
+| --- | --- | --- | --- | --- |
+| 1 | Annonces BODACC sur la société : procédure collective (avec la date de cessation des paiements), conciliation, vente ou cession de fonds, transfert de siège, comptes non déposés sept mois après la clôture | `bodacc.ts` | bodacc-datadila.opendatasoft.com | aucune |
+| 2 | Nouveau représentant légal, siège transféré (diff du Registre national des entreprises entre deux passages ; les changements de dirigeant publiés au BODACC aussi) | `annuaire.ts` | recherche-entreprises.api.gouv.fr | aucune |
+| 3 | Agence ouverte : date exacte via Sirene, sinon diff du nombre d'établissements ouverts | `annuaire.ts` | api.insee.fr | `INSEE_API_KEY` (gratuite), sinon diff |
+| 4 | Offres d'emploi recouvrement, comptable clients, facturation, DAF publiées par l'agence ; l'annonce est lue pour écarter les postes chez un client | `emplois.ts` | HelloWork (HTML), France Travail v2 | aucune ; `FRANCE_TRAVAIL_CLIENT_ID/SECRET` en plus |
+| 5 | Tendance INPI : délai client en hausse trois exercices de suite, hausse de 20 jours ou plus (avec la trésorerie immobilisée), liquidité sous 1, fournisseurs payés plus tard (clôtures futures et exercices sans CA écartés) | `inpi.ts` | data.economie.gouv.fr ratios_inpi_bce | aucune |
+| 6 | Avis Google d'intérimaires parlant de paie en retard ; note en baisse de 0,3 ou plus entre deux passages | `avis.ts` | SerpApi (~0,01 $ la recherche) | `SERPAPI_KEY` |
+| 7 | Nouveau profil finance ou direction dans l'équipe LinkedIn (en poste depuis moins de six mois, absent du passage précédent) | `equipe.ts` | Exa, ~0,044 $ par prospect | `EXA_API_KEY` |
+| 8 | Calendrier de la garantie financière : certification du chiffre d'affaires dans les six mois de la clôture (signal 45 jours avant) | `inpi.ts` | date de clôture INPI | aucune |
+| 9 | Défaillances d'entreprises clientes de l'intérim (bâtiment, industrie, logistique, transport) dans le département : 90 jours contre la même fenêtre un an plus tôt, signal à partir de +30 % | `bodacc.ts` | BODACC export | aucune |
+| 10 | Presse : Google Actualités sur le nom de l'agence, retenue seulement pour rachat, cession, ouverture, implantation, fermeture, levée, nomination, procédure | `presse.ts` | news.google.com RSS | aucune |
+
+Sources de signal ajoutées : `rne` (registre), `sirene` (établissement), `garantie` (garantie financière), avec leur accroche de lettre et de note vocale. Les instantanés nécessaires aux comparaisons (dirigeants, siège, établissements, clôture, note Google, équipe vue) vivent dans `prospect.veille` ; le résumé du dernier passage dans `settings.veilleLastRun`, affiché dans Réglages.
+
+Garde-fous : les sources payantes ne tournent que le lundi en cron (ou si on coche la case), sous le plafond `ENRICH_DAILY_USD` et 2 $ par passage ; un nom d'agence trop commun (« Alliance », « Globe ») n'est pas cherché dans la presse, et ses offres d'emploi ne comptent que dans son département ; les offres HelloWork sont lues pour écarter les postes « pour notre client » ; une veille n'appelle personne, elle ajoute des signaux à relire.
+
+Premier passage sur les 40 prospects réels (1er octobre 2026, sources gratuites) : 71 signaux, dont 53 ratios INPI, 14 BODACC (4 hausses de défaillances départementales, 3 transferts de siège), 3 presse (Mistertemp : nouveau siège, acquisition de Klemme Personal), 1 offre d'emploi ; registre et Sirene ne produisent qu'à partir du second passage (il leur faut un instantané).
+

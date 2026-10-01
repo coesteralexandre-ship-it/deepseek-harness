@@ -228,7 +228,7 @@ class RedisStore implements Store {
 }
 
 // Bump the suffix when the Store interface changes, so `next dev` drops the instance built from older code.
-const STORE_KEY = Symbol.for('relance-vocale.store.v10')
+const STORE_KEY = Symbol.for('relance-vocale.store.v11')
 
 /** Singleton store for the process, kept on globalThis so `next dev` reloads keep the data. */
 export function getStore(): Store {

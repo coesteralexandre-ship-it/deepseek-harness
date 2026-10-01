@@ -5,7 +5,7 @@ export const STAGES = ['nouveau', 'a_appeler', 'appel_en_cours', 'a_rappeler', '
 export type Stage = (typeof STAGES)[number]
 
 /** Where a signal was detected. */
-export const SIGNAL_SOURCES = ['linkedin', 'offre_emploi', 'pappers', 'bodacc', 'marches', 'presse', 'avis', 'inbound', 'recommandation'] as const
+export const SIGNAL_SOURCES = ['linkedin', 'offre_emploi', 'pappers', 'bodacc', 'rne', 'sirene', 'garantie', 'marches', 'presse', 'avis', 'inbound', 'recommandation'] as const
 export type SignalSource = (typeof SIGNAL_SOURCES)[number]
 
 export type SignalStatus = 'nouveau' | 'qualifie' | 'ignore'
@@ -168,10 +168,36 @@ export interface Prospect {
   tasks?: Task[]
   history?: ProspectEvent[]
   record?: ProspectRecord
+  /** Snapshots kept by the watch (veille) to detect what changed since its last run. */
+  veille?: WatchSnapshot
   nextCallAt?: string
   calls: CallRecord[]
   createdAt: string
   updatedAt: string
+}
+
+/** What the watch saw last time: compared on the next run to signal a new representative, a move, an opening, a rating drop. */
+export interface WatchSnapshot {
+  directory?: { representatives: string[]; address: string; establishments: number; updatedRne?: string; at: string }
+  /** Closing date of the last published accounts (YYYY-MM-DD). */
+  fiscalYearEnd?: string
+  rating?: { value: number; count: number; at: string }
+  /** LinkedIn URLs of team members already seen. */
+  teamSeen?: string[]
+  teamAt?: string
+  lastRunAt?: string
+}
+
+/** Summary of the last watch run, shown in Réglages. */
+export interface WatchRun {
+  at: string
+  prospects: number
+  created: number
+  bySource: Record<string, number>
+  errors: string[]
+  costUsd: number
+  /** `cron` for the daily run, `manuel` for the button. */
+  trigger: 'cron' | 'manuel'
 }
 
 /** Everything the board needs for one prospect. */
@@ -356,6 +382,7 @@ export interface Settings {
   /** `demo` runs every step itself; `reel` prepares emails and calls for a person to approve. */
   autopilot: 'demo' | 'reel'
   agency: Agency
+  veilleLastRun?: WatchRun
 }
 
 export type AudioFormat = 'mp3' | 'ogg'
