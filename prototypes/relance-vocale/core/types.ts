@@ -103,6 +103,42 @@ export interface Enrichment {
   gaps: string[]
 }
 
+export type TaskKind = 'appel' | 'courrier' | 'email' | 'autre'
+
+/** A dated thing to do on a prospect; shown on its fiche and on the « Aujourd’hui » page until ticked. */
+export interface Task {
+  id: string
+  title: string
+  kind: TaskKind
+  /** ISO instant it is due. */
+  dueAt: string
+  createdAt: string
+  doneAt?: string
+  note?: string
+  /** Created by the « À rappeler » stage: its date follows the stage's date. */
+  fromStage?: boolean
+}
+
+/** One line of a prospect's history: stage changes, tasks, opposition, outreach. */
+export interface ProspectEvent {
+  id: string
+  at: string
+  title: string
+  detail?: string
+}
+
+/** The record kept for each person contacted: where the data came from, what was told, what they refused. */
+export interface ProspectRecord {
+  /** Public sources the data was read from, in French. */
+  source: string
+  /** ISO date the data was collected. */
+  collectedAt: string
+  /** When the information notice (origin of the data, right to object) went out. */
+  noticeSentAt?: string
+  /** The person asked not to be contacted: blocks every channel. */
+  optOut?: { at: string; reason: string }
+}
+
 /** A staffing agency in the pipeline. */
 export interface Prospect {
   id: string
@@ -129,6 +165,9 @@ export interface Prospect {
   notes?: string
   /** Website, numbers, LinkedIn and team found by the enrichment. */
   enrichment?: Enrichment
+  tasks?: Task[]
+  history?: ProspectEvent[]
+  record?: ProspectRecord
   nextCallAt?: string
   calls: CallRecord[]
   createdAt: string

@@ -29,6 +29,8 @@ export async function POST(request: Request, { params }: Context) {
   const store = getStore()
   const invoice = await store.getInvoice(id)
   if (invoice === undefined) return jsonError('Facture introuvable', 404)
+  // An invoice imported without a number must not open a call that ElevenLabs will refuse.
+  if ((parsed.data.toNumber ?? invoice.debtor.phone).trim() === '') return jsonError('Aucun numéro de téléphone pour ce client : complétez la fiche avant d’appeler.', 400)
   try {
     const response = await startOutboundCall({
       // The phone agent has no client tool: no browser answers one during a phone call.

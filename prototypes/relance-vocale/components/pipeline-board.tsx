@@ -27,16 +27,31 @@ export function PipelineBoard({ prospects }: { prospects: ProspectView[] }) {
     const id = event.dataTransfer.getData('text/plain')
     const current = items.find(item => item.id === id)
     if (current === undefined || current.stage === stage) return
+    // « À rappeler » needs a date: it becomes the task the « Aujourd’hui » page shows.
+    let nextCallAt: string | undefined
+    if (stage === 'a_rappeler') {
+      const tomorrow = new Date(Date.now() + 86_400_000)
+      const pad = (value: number) => String(value).padStart(2, '0')
+      const answer = window.prompt('Rappeler quand ? (AAAA-MM-JJ HH:MM)', `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())} 10:00`)
+      if (answer === null) return
+      const parsed = new Date(answer.trim().replace(' ', 'T'))
+      if (Number.isNaN(parsed.getTime())) {
+        setError('Date de rappel illisible : attendu AAAA-MM-JJ HH:MM.')
+        return
+      }
+      nextCallAt = parsed.toISOString()
+    }
     const previous = items
     setItems(items.map(item => (item.id === id ? { ...item, stage } : item)))
     const response = await fetch(`/api/prospects/${id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ stage }),
+      body: JSON.stringify({ stage, ...(nextCallAt !== undefined ? { nextCallAt } : {}) }),
     })
     if (!response.ok) {
       setItems(previous)
-      setError(`Déplacement refusé (${response.status})`)
+      const data = (await response.json().catch(() => ({}))) as { error?: string }
+      setError(data.error ?? `Déplacement refusé (${response.status})`)
       return
     }
     setError(null)

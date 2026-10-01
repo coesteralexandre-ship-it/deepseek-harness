@@ -1,13 +1,16 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { OutreachPanel } from '@/components/outreach-panel'
+import { ContactPanel } from '@/components/contact-panel'
 import { EnrichPanel } from '@/components/enrich-panel'
 import { Pill } from '@/components/pill'
 import { SourceChip, WeightDots } from '@/components/source-chip'
 import { StageSelect } from '@/components/stage-select'
+import { TasksPanel } from '@/components/tasks-panel'
 import { Transcript } from '@/components/transcript'
 import { VoiceConsole } from '@/components/voice-console'
 import { AGENT_NAME, dynamicVariablesFor } from '@/core/agent-prompt'
+import { contactBlock, recordOf } from '@/core/contact'
 import { enrichKeys } from '@/core/enrich'
 import { elevenLabsEnv } from '@/core/env'
 import { formatDateTime, formatKeur, formatPhone, relativeDay } from '@/core/format'
@@ -101,7 +104,24 @@ export default async function ProspectPage({ params }: { params: Promise<{ id: s
           </ul>
         </section>
 
+        <TasksPanel prospectId={prospect.id} tasks={prospect.tasks ?? []} />
+
         <EnrichPanel prospectId={prospect.id} enrichment={prospect.enrichment} ready={enrichKeys().exa !== undefined} />
+
+        {(prospect.history ?? []).length > 0 && (
+          <section className="mt-8">
+            <p className="eyebrow">Historique · {(prospect.history ?? []).length}</p>
+            <ol className="card mt-3 divide-y divide-line">
+              {[...(prospect.history ?? [])].reverse().slice(0, 30).map(event => (
+                <li key={event.id} className="px-4 py-2.5">
+                  <p className="text-[13.5px] font-semibold text-ink">{event.title}</p>
+                  {event.detail !== undefined && <p className="text-[12.5px] text-muted">{event.detail}</p>}
+                  <p className="mt-0.5 font-mono text-[10.5px] uppercase tracking-[0.1em] text-faint">{new Date(event.at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'medium', timeStyle: 'short' })}</p>
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
 
         <section className="mt-8">
           <p className="eyebrow">Appels · {calls.length}</p>
@@ -138,6 +158,8 @@ export default async function ProspectPage({ params }: { params: Promise<{ id: s
       </div>
 
       <aside className="animate-rise space-y-4 lg:sticky lg:top-8 lg:self-start" style={{ animationDelay: '120ms' }}>
+        <ContactPanel prospectId={prospect.id} record={recordOf(prospect)} />
+        {contactBlock(prospect, 'appel') !== undefined && <p className="rounded-lg border border-fuchsia/30 bg-fuchsia/10 px-3 py-2 text-[12.5px] text-fuchsia">{contactBlock(prospect, 'appel')}</p>}
         <VoiceConsole
           kind="prospect"
           id={view.id}
@@ -162,10 +184,7 @@ export default async function ProspectPage({ params }: { params: Promise<{ id: s
           capabilities={outreachCapabilities()}
         />
         <div className="card space-y-4 p-5">
-          <StageSelect prospectId={view.id} stage={view.stage} />
-          {view.nextCallAt !== undefined && (
-            <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-ochre">Prochain appel : {formatDateTime(view.nextCallAt)}</p>
-          )}
+          <StageSelect prospectId={view.id} stage={view.stage} nextCallAt={view.nextCallAt} />
           {view.notes !== undefined && view.notes !== '' && (
             <div>
               <p className="label">Notes</p>

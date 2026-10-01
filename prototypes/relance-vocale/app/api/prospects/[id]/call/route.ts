@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { dynamicVariablesFor } from '@/core/agent-prompt'
+import { contactBlock } from '@/core/contact'
 import { startOutboundCall } from '@/core/elevenlabs'
 import { elevenLabsEnv } from '@/core/env'
 import { errorResponse, jsonError, parseBody } from '@/core/http'
@@ -29,6 +30,8 @@ export async function POST(request: Request, { params }: Context) {
   const store = getStore()
   const prospect = await store.getProspect(id)
   if (prospect === undefined) return jsonError('Prospect introuvable', 404)
+  const blocked = contactBlock(prospect, 'appel')
+  if (blocked !== undefined && parsed.data.toNumber === undefined) return jsonError(blocked, 403)
   const signals = (await store.listSignals()).filter(signal => signal.prospectId === prospect.id)
 
   try {

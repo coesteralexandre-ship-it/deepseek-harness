@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { contactBlock } from '@/core/contact'
 import { jsonError, parseBody } from '@/core/http'
 import { addLeadToCampaign, lemlistConfigured } from '@/core/lemlist'
 import { outreachUrls } from '@/core/outreach'
@@ -24,6 +25,8 @@ export async function POST(request: Request, { params }: Context) {
   const store = getStore()
   let prospect = await store.getProspect(id)
   if (prospect === undefined) return jsonError('Prospect introuvable', 404)
+  const blocked = contactBlock(prospect, 'lemlist')
+  if (blocked !== undefined) return jsonError(blocked, 403)
   const email = parsed.data.email ?? prospect.contact.email
   if (email === undefined) return jsonError('Email du contact requis pour lemlist.', 400)
   if (email !== prospect.contact.email) {

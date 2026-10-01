@@ -29,6 +29,7 @@ const GROUPS: { label: string; links: NavLink[] }[] = [
   {
     label: 'Prospection',
     links: [
+      { href: '/aujourd-hui', label: 'Aujourd’hui', icon: 'M5 12l4 4L19 7' },
       { href: '/pipeline', label: 'Prospects', also: ['/prospects'], icon: 'M16 11a4 4 0 1 0-8 0M4 20a8 8 0 0 1 16 0' },
       { href: '/signaux', label: 'Signaux', icon: 'M4 18a8 8 0 0 1 16 0M8 18a4 4 0 0 1 8 0M12 18h.01' },
     ],

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { jsonError, parseBody } from '@/core/http'
 import { getStore } from '@/core/store'
+import { STAGE_META } from '@/core/stages'
+import { addTask, logProspect } from '@/core/tasks'
 import { STAGES } from '@/core/types'
 import { toView } from '@/core/views'
 
@@ -35,15 +37,26 @@ export async function PATCH(request: Request, { params }: Context) {
   const prospect = await store.getProspect(id)
   if (prospect === undefined) return jsonError('Prospect introuvable', 404)
   const { stage, notes, angle, letter, voiceScript, nextCallAt } = parsed.data
-  const updated = {
+  const now = Date.now()
+  const callAt = nextCallAt === null ? undefined : nextCallAt ?? prospect.nextCallAt
+  // A callback without a date is a card nobody comes back to: the stage requires one.
+  if (stage === 'a_rappeler' && callAt === undefined) return jsonError('Une date de rappel est requise pour passer « À rappeler ».', 400)
+  if (stage === 'a_rappeler' && callAt !== undefined && Date.parse(callAt) < now - 60_000) return jsonError('La date de rappel est déjà passée.', 400)
+  let updated: typeof prospect = {
     ...prospect,
     stage: stage ?? prospect.stage,
     notes: notes ?? prospect.notes,
     angle: angle ?? prospect.angle,
     letter: letter ?? prospect.letter,
     voiceScript: voiceScript ?? prospect.voiceScript,
-    nextCallAt: nextCallAt === null ? undefined : nextCallAt ?? prospect.nextCallAt,
-    updatedAt: new Date().toISOString(),
+    nextCallAt: callAt,
+    updatedAt: new Date(now).toISOString(),
+  }
+  if (stage !== undefined && stage !== prospect.stage) updated = logProspect(updated, `Étape : ${STAGE_META[stage].label}`, undefined, now)
+  // The stage's date becomes the task the « Aujourd’hui » page shows.
+  if (updated.stage === 'a_rappeler' && callAt !== undefined && (callAt !== prospect.nextCallAt || stage === 'a_rappeler')) {
+    const who = `${prospect.contact.firstName} ${prospect.contact.lastName}`.trim() || prospect.company
+    updated = addTask(updated, { title: `Rappeler ${who}`, kind: 'appel', dueAt: callAt, fromStage: true }, now)
   }
   await store.saveProspect(updated)
   return NextResponse.json(toView(updated, await store.listSignals()))

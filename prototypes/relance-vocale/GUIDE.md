@@ -201,3 +201,10 @@ Chaque fiche prospect a un bloc « Coordonnées et équipe » : site de l'agence
 - **Autopilote** : un espace neuf démarre en mode réel en production (brouillons et file d'appels à valider, rien ne part), en démo en développement ; `AUTOPILOT_DEFAULT` force l'un ou l'autre. Le cron du matin exige `CRON_SECRET`.
 - **Radar** : l'annuaire est interrogé sur 78.20Z puis 78.20G (code NAF 2025, valide à partir du 1er janvier 2027) ; un code que la nomenclature refuse est simplement passé.
 
+## Tâches, page « Aujourd’hui » et opposition
+
+- **Tâches datées** sur chaque prospect (`core/tasks.ts`, bloc « Tâches » de la fiche, `POST`/`PATCH /api/prospects/[id]/taches`) : appel, courrier, email ou autre, avec date et heure. Passer un prospect « À rappeler » exige une date (sélecteur de la fiche ou glisser-déposer) et crée la tâche d'appel correspondante ; une nouvelle date remplace l'ancienne.
+- **Page `/aujourd-hui`** : tâches en retard, du jour et de la semaine, cochables sur place, plus les ouvertures de QR code des 48 dernières heures.
+- **Historique** de la fiche : changements d'étape, tâches, opposition, notice envoyée (`Prospect.history`).
+- **« Ne plus contacter »** (`POST /api/prospects/[id]/contact`, bloc « Contact et données ») : l'opposition, avec son motif et sa date, passe la fiche en « Pas intéressé » et bloque l'appel, lemlist et WhatsApp (`core/contact.ts`, `contactBlock`) ; elle se lève avec un motif. Le bloc affiche l'origine des données (`recordOf`) et la date d'envoi de l'information prévue par l'article 14 du RGPD, que la lettre contient.
+

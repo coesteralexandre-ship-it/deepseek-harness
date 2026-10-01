@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { AGENT_NAME, PRODUCT_NAME } from '@/core/agent-prompt'
 import { ensureAudio } from '@/core/audio'
+import { contactBlock } from '@/core/contact'
 import { jsonError, parseBody } from '@/core/http'
 import { outreachUrls } from '@/core/outreach'
 import { getStore } from '@/core/store'
@@ -27,7 +28,10 @@ export async function POST(request: Request, { params }: Context) {
   const store = getStore()
   const prospect = await store.getProspect(id)
   if (prospect === undefined) return jsonError('Prospect introuvable', 404)
+  const blocked = contactBlock(prospect, 'whatsapp')
+  if (blocked !== undefined) return jsonError(blocked, 403)
   const to = parsed.data.to ?? prospect.contact.phone
+  if (to.trim() === '') return jsonError('Aucun numéro de téléphone sur cette fiche.', 400)
   const urls = outreachUrls(prospect)
   const text = `Bonjour ${prospect.contact.firstName}, ici ${AGENT_NAME}, l’assistante vocale d’${PRODUCT_NAME} (une IA). Je vous ai laissé un message de 40 secondes : ${urls.landingUrl}`
   const link = clickToChatLink(to, text)
